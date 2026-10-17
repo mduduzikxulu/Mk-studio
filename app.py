@@ -6,7 +6,7 @@ import yt_dlp
 BASE = os.path.dirname(os.path.abspath(__file__))
 DL = os.path.join(BASE, "downloads")
 os.makedirs(DL, exist_ok=True)
-app = Flask(__name__, static_folder="static", static_url_path="")
+app = Flask(__name__, static_folder="docs", static_url_path="")
 jobs = {}
 
 FORMATS = {  # single-file formats: no ffmpeg required
