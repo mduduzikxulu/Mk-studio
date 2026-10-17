@@ -1,3 +1,0 @@
-document.getElementById('top').outerHTML=`<header class="top"><a class="logo" href="/"><svg width="26" height="20" fill="#ffb020"><rect y="9" width="5" height="11"/><rect x="7" y="2" width="5" height="18"/><rect x="14" y="6" width="5" height="14"/><rect x="21" y="12" width="5" height="8"/></svg>Studio</a><nav><a href="/mix">Mix</a><a href="/download">Download</a><a href="/how">How it works</a></nav></header>`;
-document.querySelectorAll('.top nav a').forEach(a=>a.pathname===location.pathname&&a.classList.add('on'));
-const f=document.getElementById('foot');if(f)f.innerHTML='Audio stays in your browser. Only download content you own or have permission to save.';
