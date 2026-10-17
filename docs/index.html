@@ -1,0 +1,16 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Studio - mix audio, save video</title>
+<meta name="base-path" content="">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Unbounded:wght@500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css"></head><body>
+<div id="top"></div><main class="wrap">
+<section class="hero"><h1>Put music under a voice. Save any video.</h1><p>A fast, private audio mixer with a real timeline, plus a one-paste video downloader. No account, no setup.</p>
+<div class="cta"><a class="btn amb" href="mix.html">Open the mixer</a><a class="btn" href="download.html">Download a video</a><a class="btn" href="how.html">How it works</a></div>
+<div class="rack"><div class="bar"><b></b><b></b><b></b>&nbsp; interview-with-music.studio</div><div class="tl" id="tl"><div class="lane"></div><div class="lane c"></div><div class="lane c"></div><div class="ph"></div></div><div class="vu" id="vu"></div></div></section>
+<section class="tiles"><a class="tile" href="mix.html"><h2>Mix</h2><p>Drop in voice, music and sound effects. Drag clips, trim by clicking, join them back, undo 50 steps, and zoom to the frame.</p><span class="go">Open the mixer</span></a>
+<a class="tile" href="download.html"><h2>Download</h2><p>YouTube, TikTok, Instagram and Facebook. Paste the link, pick video or audio, and it resumes if your connection drops.</p><div class="chips"><span class="chip on">YouTube</span><span class="chip">TikTok</span><span class="chip">Instagram</span><span class="chip">Facebook</span></div><div class="prog"><div></div></div><span class="go">Download a video</span></a></section>
+<h2 class="sec">Built for fast edits</h2>
+<section class="feat"><div><h3>Timeline editor</h3><p>Any number of clips on any lane. Drag to move, drag the edges to trim.</p></div><div><h3>Trim and join</h3><p>One button splits at the playhead. Press it again on the seam to join.</p></div><div><h3>Undo and redo</h3><p>Fifty steps back and forward, with Ctrl+Z and Ctrl+Y.</p></div><div><h3>Zoom</h3><p>Step in for exact cuts, step out to see the whole mix.</p></div><div><h3>Master volume to 200%</h3><p>100% is normal. Go up to 200% for extra loud, with a limiter to keep it clean.</p></div><div><h3>WAV or MP3</h3><p>Rendered in your browser in seconds. Nothing is uploaded.</p></div></section>
+</main><footer id="foot"></footer><script src="site.js"></script><script>
+const vu=document.getElementById('vu');for(let c=0;c<4;c++){const d=document.createElement('div');for(let i=0;i<14;i++)d.append(document.createElement('u'));vu.append(d)}
+setInterval(()=>vu.querySelectorAll('div').forEach(d=>{const n=3+Math.floor(Math.random()*11);[...d.children].forEach((u,i)=>u.className=i<n?(i>11?'r':i>8?'a':'g'):'')}),130);
+document.querySelectorAll('.lane').forEach(l=>{for(let i=0;i<110;i++){const b=document.createElement('i');b.style.height=(2+Math.abs(Math.sin(i/7)*Math.random())*12)+'px';l.append(b)}});
+</script></body></html>

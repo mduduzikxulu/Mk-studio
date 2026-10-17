@@ -1,0 +1,19 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Download - Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Unbounded:wght@500;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="/style.css"></head><body>
+<div id="top"></div><main class="wrap page" style="max-width:760px"><h1>Save a video or its audio</h1><p class="lead">Pick the site, paste the link, choose a format.</p>
+<div class="card" style="margin-top:24px"><div class="chips" id="chips"><button class="chip on">YouTube</button><button class="chip">TikTok</button><button class="chip">Instagram</button><button class="chip">Facebook</button></div>
+<input class="url" id="url" placeholder="Paste the YouTube link here" autocomplete="off"><div class="msg" id="dmsg"></div>
+<div id="prev" hidden><div class="pv"><img id="th" alt=""><div><h3 id="tt" style="font-size:16px"></h3><div class="msg" id="tm" style="margin:4px 0 0;min-height:0"></div></div></div>
+<div class="row"><button class="chip on" data-k="video">Video (MP4)</button><button class="chip" data-k="audio">Audio only</button><button class="btn amb" id="go">Download</button></div><div class="pbar"><div id="dbar"></div></div></div></div></main>
+<footer id="foot"></footer><script src="/site.js"></script><script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];let kind='video',timer,cur='';const dm=(t,e)=>{$('#dmsg').textContent=t;$('#dmsg').className='msg'+(e?' err':'')};
+$$('#chips .chip').forEach(c=>c.onclick=()=>{$$('#chips .chip').forEach(x=>x.classList.toggle('on',x===c));$('#url').placeholder='Paste the '+c.textContent+' link here';$('#url').focus()});
+$$('[data-k]').forEach(c=>c.onclick=()=>{kind=c.dataset.k;$$('[data-k]').forEach(x=>x.classList.toggle('on',x===c))});
+$('#url').oninput=()=>{clearTimeout(timer);const u=$('#url').value.trim();$('#prev').hidden=true;if(!u)return dm('');timer=setTimeout(()=>lookup(u),400)};
+const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+async function lookup(u){dm('Finding video...');try{const r=await post('/api/info',{url:u}),d=await r.json();if(!r.ok)return dm(d.error,1);cur=u;$('#th').src=d.thumb||'';$('#tt').textContent=d.title||'Video';const m=d.duration?Math.floor(d.duration/60)+':'+String(d.duration%60).padStart(2,'0'):'';$('#tm').textContent=[d.site,m,d.uploader].filter(Boolean).join(' - ');$('#prev').hidden=false;$('#dbar').style.width=0;dm('')}catch(_){dm("Can't reach the Studio server. Is app.py running?",1)}}
+$('#go').onclick=async()=>{$('#go').disabled=true;dm('Starting...');try{const{id}=await(await post('/api/download',{url:cur,kind})).json();poll(id)}catch(_){dm('Connection lost. Press Download to resume.',1);$('#go').disabled=false}};
+async function poll(id){try{const p=await(await fetch('/api/progress/'+id)).json();$('#dbar').style.width=(p.pct||0)+'%';
+if(p.status==='done'){dm('Done. Your download is starting.');$('#go').disabled=false;const a=document.createElement('a');a.href='/api/file/'+id;a.click();return}
+if(p.status==='error'){dm(p.error,1);$('#go').disabled=false;return}dm(p.status==='downloading'?`Downloading ${p.pct}%`+(p.speed?` - ${(p.speed/1048576).toFixed(1)} MB/s`:''):'Working...');setTimeout(()=>poll(id),600)}catch(_){dm('Connection lost. Retrying...',1);setTimeout(()=>poll(id),2000)}}
+</script></body></html>
