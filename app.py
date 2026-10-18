@@ -20,6 +20,9 @@ def base_opts(kind="info"):
         "retries": 25, "fragment_retries": 25, "file_access_retries": 5,
         "continuedl": True,          # resume .part files instead of restarting
         "socket_timeout": 20,
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        "http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"},
+        "cookiesfrombrowser": ("chrome", "firefox", "edge"),
         "outtmpl": os.path.join(DL, f"%(extractor)s-%(id)s-{kind}.%(ext)s"),
     }
 
@@ -45,7 +48,8 @@ def info():
                        duration=d.get("duration"), site=d.get("extractor_key"),
                        uploader=d.get("uploader"))
     except Exception as e:
-        return jsonify(error="Couldn't find a video at that link. It may be private or unsupported."), 400
+        detail = str(e).strip() or "This link is unavailable, private, or restricted."
+        return jsonify(error=f"Couldn't access that link: {detail}"), 400
 
 def work(jid, url, kind):
     job = jobs[jid]
@@ -64,7 +68,8 @@ def work(jid, url, kind):
         job.update(status="done", path=path, name=os.path.basename(path) and
                    f"{(d.get('title') or 'download')[:80]}{os.path.splitext(path)[1]}")
     except Exception as e:
-        job.update(status="error", error="Download failed. Check your connection and try again - it will resume.")
+        detail = str(e).strip() or "This link is unavailable, private, or restricted."
+        job.update(status="error", error=f"Download failed: {detail}")
 
 @app.post("/api/download")
 def download():

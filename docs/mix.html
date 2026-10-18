@@ -6,13 +6,17 @@
 <div class="tools"><button class="amb" id="add">Add audio</button><input type="file" id="file" accept="audio/*" multiple hidden>
 <span class="grp"><button id="undo">Undo</button><button id="redo">Redo</button></span>
 <span class="grp"><button id="split">Trim here</button><button id="dup">Duplicate</button><button id="voice">Mark as voice</button><button id="del">Delete</button></span>
-<span class="grp"><button id="zo" aria-label="Zoom out">-</button><div id="zb" style="width:120px"></div><button id="zi" aria-label="Zoom in">+</button><button id="fit">Fit</button></span></div>
-<div class="trans"><button class="amb" id="play">Play</button><button id="stop">Stop</button><span id="tc">00:00.0</span><div class="master"><span id="ml">Master 100%</span><div id="mb"></div></div></div>
+<span class="grp"><button id="allvol">All volume</button><button id="zo" aria-label="Zoom out">-</button><div id="zb" style="width:120px"></div><button id="zi" aria-label="Zoom in">+</button><button id="fit">Fit</button></span></div>
+<div class="trans"><button class="amb" id="play">Play</button><button id="stop">Stop</button><span id="tc">00:00.0</span></div>
 <div id="wrap"><canvas id="cv"></canvas><div id="sp"></div></div>
 <div class="opts"><div><h3>Selected clip</h3><span id="cn" style="color:var(--mu)">Click a clip to select it</span><div id="cvb" style="margin-top:10px"></div><small id="cvl">Clip volume 100%</small></div>
 <div><h3>Background music level</h3><label><input type="checkbox" id="duck"> Follow the voice (music dips while a voice clip speaks)</label><div id="db"></div><small id="dl">Off: music plays at a steady level.</small></div>
 <div><h3>Export</h3><div class="row" style="margin:0"><button class="amb" id="xw">Download WAV</button><button id="xm">Download MP3</button></div><small id="xs">WAV is best quality. MP3 is smaller.</small></div></div>
-</main><div id="toast"></div><div id="clip-menu" class="clip-menu" role="menu" aria-label="Audio clip actions" hidden>
+</main><dialog id="volume-dialog" class="volume-dialog" aria-labelledby="volume-title">
+<div class="volume-head"><h2 id="volume-title">All volume</h2><button type="button" id="close-vol" aria-label="Close volume controls">×</button></div>
+<div class="volume-row master-volume-row"><div class="volume-row-head"><strong>Master</strong><output id="master-value">100%</output></div><input id="master-volume" type="range" min="0" max="200" step="1" value="100" aria-label="Master volume"></div>
+<div id="volume-list"></div>
+</dialog><div id="toast"></div><div id="clip-menu" class="clip-menu" role="menu" aria-label="Audio clip actions" hidden>
 <button type="button" role="menuitem" data-action="split">Trim here</button>
 <button type="button" role="menuitem" data-action="duplicate">Duplicate</button>
 <button type="button" role="menuitem" data-action="voice">Mark as voice</button>

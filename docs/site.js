@@ -7,5 +7,29 @@ document.querySelectorAll('.top nav a').forEach(a => {
   const locPath = location.pathname.replace(/\.html$/, '');
   if (aPath === locPath) a.classList.add('on');
 });
+
+if (location.pathname.endsWith('/mix.html') || location.pathname.endsWith('/mix')) {
+  const askBeforeLeave = (target) => {
+    if (!window.__studio_dirty) return true;
+    const ok = window.confirm('Leaving this page will discard your current mix. Are you sure?');
+    if (ok) window.__studio_dirty = false;
+    return ok;
+  };
+
+  document.querySelectorAll('a[href]').forEach(link => {
+    const href = link.getAttribute('href');
+    if (!href || href.startsWith('#') || href.startsWith('http')) return;
+    link.addEventListener('click', (event) => {
+      if (!askBeforeLeave(href)) event.preventDefault();
+    });
+  });
+
+  window.addEventListener('beforeunload', (event) => {
+    if (!window.__studio_dirty) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+}
+
 const f = document.getElementById('foot');
 if (f) f.innerHTML = 'Audio stays in your browser. Only download content you own or have permission to save.';

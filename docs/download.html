@@ -7,10 +7,157 @@
   <p style="color:var(--mu);margin:0">The video downloader needs the Studio Python server (<code>app.py</code>) running locally on your machine. It cannot run on GitHub Pages because it requires a backend to fetch videos.</p>
   <p style="color:var(--mu);margin-top:12px">To use it, <a href="https://github.com/xulu2381/Mk-studio" style="color:var(--amb)">clone the repo</a>, install dependencies (<code>pip install -r requirements.txt</code>), and run <code>python app.py</code>.</p>
 </div>
-<div class="card" style="margin-top:18px;opacity:.5">
-  <div class="chips" id="chips"><button class="chip on">YouTube</button><button class="chip">TikTok</button><button class="chip">Instagram</button><button class="chip">Facebook</button></div>
-  <input class="url" id="url" placeholder="Paste the YouTube link here" autocomplete="off" disabled>
-  <div class="msg" id="dmsg" style="color:var(--amb)">Run app.py locally to use the downloader.</div>
+<div class="card" style="margin-top:18px">
+  <div class="chips" id="chips"><button class="chip on" data-kind="video" type="button">YouTube</button><button class="chip" data-kind="video" type="button">TikTok</button><button class="chip" data-kind="video" type="button">Instagram</button><button class="chip" data-kind="video" type="button">Facebook</button></div>
+  <input class="url" id="url" placeholder="Paste the YouTube link here" autocomplete="off" aria-label="Video URL">
+  <div class="row" style="margin-top:12px"><button id="reset" type="button">Clear</button></div>
+  <div class="msg" id="dmsg" style="color:var(--amb)" aria-live="polite">Paste or type a full URL to fetch the video.</div>
+  <div id="preview" style="display:none;margin-top:16px">
+    <div class="pv"><img id="thumb" src="" alt="Video thumbnail"><div><h3 id="title" style="margin:0 0 6px">Loading…</h3><div id="meta" style="color:var(--mu);font-size:13px"></div><div class="row" style="margin-top:10px"><button class="amb" id="download" type="button">Download</button><button id="audio" type="button">Audio only</button></div></div></div>
+    <div class="pbar"><div id="pbar"></div></div>
+  </div>
 </div>
 </main>
-<footer id="foot"></footer><script src="site.js"></script></body></html>
+<footer id="foot"></footer><script src="site.js"></script>
+<script>
+const state = { kind: 'video', job: null, currentUrl: '', selected: { title: '', thumb: '', duration: '', site: '', uploader: '' } };
+const chipEls = document.querySelectorAll('#chips .chip');
+const setChip = (el) => {
+  chipEls.forEach(chip => chip.classList.toggle('on', chip === el));
+};
+chipEls.forEach((chip) => chip.addEventListener('click', () => setChip(chip)));
+const msg = (text, isErr = false) => {
+  const el = document.getElementById('dmsg');
+  el.textContent = text;
+  el.style.color = isErr ? 'var(--red)' : 'var(--amb)';
+};
+const resetForm = () => {
+  state.currentUrl = '';
+  document.getElementById('url').value = '';
+  document.getElementById('preview').style.display = 'none';
+  document.getElementById('pbar').style.width = '0%';
+  msg('Paste or type a full URL to fetch the video.');
+};
+
+const urlInput = document.getElementById('url');
+let inspectTimer = null;
+let inspectController = null;
+let inspectRequest = 0;
+
+const inspectUrl = async (rawUrl) => {
+  const url = rawUrl.trim();
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return;
+  }
+  if (url !== urlInput.value.trim()) return;
+  clearTimeout(inspectTimer);
+  if (inspectController) inspectController.abort();
+  inspectController = new AbortController();
+  const requestId = ++inspectRequest;
+  state.currentUrl = url;
+  msg('Checking link…');
+  try {
+    const res = await fetch('/api/info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }), signal: inspectController.signal });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not read that link.');
+    if (requestId !== inspectRequest || url !== urlInput.value.trim()) return;
+    state.selected = data;
+    document.getElementById('thumb').src = data.thumb || '';
+    document.getElementById('title').textContent = data.title || 'Video found';
+    const duration = data.duration ? `${Math.floor(data.duration / 60)}:${String(Math.floor(data.duration % 60)).padStart(2, '0')}` : 'Unknown length';
+    document.getElementById('meta').textContent = [data.site || 'Website', duration, data.uploader || ''].filter(Boolean).join(' • ');
+    document.getElementById('preview').style.display = 'block';
+    msg('Ready to download.');
+  } catch (error) {
+    if (requestId !== inspectRequest || error.name === 'AbortError') return;
+    state.currentUrl = '';
+    msg(error.message || 'Could not read that link.', true);
+    document.getElementById('preview').style.display = 'none';
+  }
+};
+
+urlInput.addEventListener('input', () => {
+  clearTimeout(inspectTimer);
+  inspectRequest++;
+  if (inspectController) inspectController.abort();
+  state.currentUrl = '';
+  state.selected = { title: '', thumb: '', duration: '', site: '', uploader: '' };
+  document.getElementById('preview').style.display = 'none';
+  document.getElementById('pbar').style.width = '0%';
+  const url = urlInput.value.trim();
+  if (!url) {
+    msg('Paste or type a full URL to fetch the video.');
+  } else if (!/^https?:\/\//i.test(url)) {
+    msg('Enter a full link starting with http.');
+  } else {
+    msg('Link detected. Checking shortly…');
+    inspectTimer = setTimeout(() => inspectUrl(url), 600);
+  }
+});
+urlInput.addEventListener('blur', () => {
+  const url = urlInput.value.trim();
+  if (/^https?:\/\//i.test(url) && state.currentUrl !== url) inspectUrl(url);
+});
+
+document.getElementById('reset').addEventListener('click', () => {
+  clearTimeout(inspectTimer);
+  inspectRequest++;
+  if (inspectController) inspectController.abort();
+  resetForm();
+});
+
+const startDownload = async (kind) => {
+  if (!state.currentUrl) {
+    msg('Paste a valid URL first.', true);
+    return;
+  }
+  const btn = kind === 'audio' ? document.getElementById('audio') : document.getElementById('download');
+  btn.disabled = true;
+  msg('Starting download…');
+  try {
+    const res = await fetch('/api/download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: state.currentUrl, kind })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Download failed.');
+    state.job = data.id;
+    await pollProgress(data.id);
+  } catch (error) {
+    msg(error.message || 'Download failed.', true);
+    btn.disabled = false;
+  }
+};
+
+const pollProgress = async (jobId) => {
+  try {
+    const res = await fetch(`/api/progress/${jobId}`);
+    const data = await res.json();
+    const pct = Math.max(0, Math.min(100, Number(data.pct) || 0));
+    document.getElementById('pbar').style.width = `${pct}%`;
+    if (data.status === 'done') {
+      const a = document.createElement('a');
+      a.href = `/api/file/${jobId}`;
+      a.download = 'studio-download';
+      a.click();
+      msg('Download complete.');
+      document.getElementById('download').disabled = false;
+      document.getElementById('audio').disabled = false;
+      return;
+    }
+    if (data.status === 'error') {
+      throw new Error(data.error || 'Download failed.');
+    }
+    msg(data.status === 'downloading' ? `Downloading ${pct}%` : 'Preparing…');
+    setTimeout(() => pollProgress(jobId), 800);
+  } catch (error) {
+    msg(error.message || 'Download failed.', true);
+    document.getElementById('download').disabled = false;
+    document.getElementById('audio').disabled = false;
+  }
+};
+
+document.getElementById('download').addEventListener('click', () => startDownload('video'));
+document.getElementById('audio').addEventListener('click', () => startDownload('audio'));
+</script></body></html>
