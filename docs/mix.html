@@ -9,7 +9,10 @@
 <span class="grp"><button id="zo" aria-label="Zoom out">-</button><div id="zb" style="width:120px"></div><button id="zi" aria-label="Zoom in">+</button><button id="fit">Fit</button></span></div>
 <div class="trans"><button class="amb" id="play">Play</button><button id="stop">Stop</button><span id="tc">00:00.0</span><div class="master"><span id="ml">Master 100%</span><div id="mb"></div></div></div>
 <div id="wrap"><canvas id="cv"></canvas><div id="sp"></div></div>
-<div class="opts"><div><h3>Selected clip</h3><span id="cn" style="color:var(--mu)">Click a clip to select it</span><div id="cvb" style="margin-top:10px"></div><small id="cvl">Clip volume 100%</small></div>
+<div class="opts"><div><h3>Selected clip</h3><span id="cn" style="color:var(--mu)">Click a clip to select it</span><div id="cvb" style="margin-top:10px"></div><small id="cvl">Clip volume 100%</small>
+<div style="margin-top:10px"><small>Fade in</small><div id="fib"></div><small id="fil">0.0 s</small></div>
+<div style="margin-top:6px"><small>Fade out</small><div id="fob"></div><small id="fol">0.0 s</small></div></div>
+<div><h3>Reverb</h3><label><input type="checkbox" id="rv-on"> Enable reverb on all clips</label><div id="rvb" style="margin-top:8px"></div><small id="rvl">Off: dry signal only.</small></div>
 <div><h3>Background music level</h3><label><input type="checkbox" id="duck"> Follow the voice (music dips while a voice clip speaks)</label><div id="db"></div><small id="dl">Off: music plays at a steady level.</small></div>
 <div><h3>Export</h3><div class="row" style="margin:0"><button class="amb" id="xw">Download WAV</button><button id="xm">Download MP3</button></div><small id="xs">WAV is best quality. MP3 is smaller.</small></div></div>
 </main><div id="toast"></div><div id="clip-menu" class="clip-menu" role="menu" aria-label="Audio clip actions" hidden>

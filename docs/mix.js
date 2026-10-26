@@ -3,7 +3,7 @@ const LH=70,RH=28,BLK=256,DPR=window.devicePixelRatio||1,Z=[6,10,16,26,40,60,90,
 let clips=[],bufs={},peaks={},sel=null,zi=5,pps=Z[zi],ph=0,play=null,undo=[],redo=[],nid=1,drag=null,lastDim='';
 /* zoom step: 100% not 10% */
 const ZOOM_STEP=100;
-const S={master:100,duck:false,depth:25},cv=$('#cv'),x=cv.getContext('2d'),wrap=$('#wrap'),clipMenu=$('#clip-menu');
+const S={master:100,duck:false,depth:25,reverb:false,rvWet:40},cv=$('#cv'),x=cv.getContext('2d'),wrap=$('#wrap'),clipMenu=$('#clip-menu');
 const toast=t=>{const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display='none',2600)};
 const fmt=t=>{const m=Math.floor(t/60);return String(m).padStart(2,'0')+':'+(t-m*60).toFixed(1).padStart(4,'0')};
 const lanes=()=>Math.max(4,Math.max(-1,...clips.map(c=>c.lane))+2),endT=()=>Math.max(0,...clips.map(c=>c.start+c.dur));
@@ -17,7 +17,15 @@ function Bars(el,n,min,max,val,hot,cb){
  const paint=()=>{const k=Math.round((v-min)/(max-min)*n);it.forEach((e,i)=>e.className=(i<k?'on ':'')+(hot!=null&&min+(i+1)*(max-min)/n>hot?'hot':''))};
  const set=e=>{const r=el.getBoundingClientRect();const raw=min+(max-min)*Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));v=snap2(raw);paint();cb(v)};
  el.onpointerdown=e=>{el.setPointerCapture(e.pointerId);set(e);el.onpointermove=set};el.onpointerup=()=>el.onpointermove=null;paint();return{set(a){v=a;paint()}}}
-/* history */
+/* ── reverb impulse-response generator ───────────────────────────────────────
+   Builds a synthetic room impulse response so no audio file is needed.
+   decay  : how long the tail fades (seconds)
+   pre    : pre-delay (seconds)                                              */
+function makeIR(ctx,decay=2.0,pre=0.02){
+  const sr=ctx.sampleRate,len=Math.ceil((decay+pre)*sr),buf=ctx.createBuffer(2,len,sr);
+  for(let ch=0;ch<2;ch++){const d=buf.getChannelData(ch);for(let i=0;i<len;i++){const t=Math.max(0,i/sr-pre);d[i]=(i<pre*sr?0:(Math.random()*2-1))*Math.pow(1-t/decay,2.8)}}
+  return buf}
+
 const js=()=>JSON.stringify(clips);
 function commit(pre){if(pre!==js()){undo.push(pre);if(undo.length>50)undo.shift();redo=[]}}
 function act(fn){const pre=js();fn();commit(pre);touch()}
@@ -26,7 +34,7 @@ function go(from,to){if(!from.length)return;to.push(js());clips=JSON.parse(from.
 const calcPeaks=b=>{const d=b.getChannelData(0),n=Math.ceil(d.length/BLK),p=new Float32Array(n);let mx=.001;for(let i=0;i<n;i++){let m=0;for(let j=i*BLK,e=Math.min(d.length,j+BLK);j<e;j+=4){const v=Math.abs(d[j]);if(v>m)m=v}p[i]=m;if(m>mx)mx=m}return p.map(v=>v/mx)};
 function freeLane(s,d,l){for(;;l++)if(!clips.some(q=>q.lane==l&&q.start<s+d-.001&&q.start+q.dur>s+.001))return l}
 async function addFiles(fl){for(const f of fl){try{const b=await AC0.decodeAudioData(await f.arrayBuffer()),src='s'+nid++;bufs[src]=b;peaks[src]=calcPeaks(b);
- act(()=>{const c={id:nid++,src,name:f.name.replace(/\.[^.]+$/,''),start:ph,off:0,dur:b.duration,lane:0,vol:100,voice:false};c.lane=freeLane(c.start,c.dur,0);clips.push(c);sel=c.id})}catch(e){toast('Could not read '+f.name)}}}
+ act(()=>{const c={id:nid++,src,name:f.name.replace(/\.[^.]+$/,''),start:ph,off:0,dur:b.duration,lane:0,vol:100,voice:false,fadeIn:0,fadeOut:0};c.lane=freeLane(c.start,c.dur,0);clips.push(c);sel=c.id})}catch(e){toast('Could not read '+f.name)}}}
 function activity(b){if(b._a)return b._a;const d=b.getChannelData(0),W=Math.floor(b.sampleRate*.05),n=Math.floor(d.length/W),r=new Float32Array(n);
  for(let i=0;i<n;i++){let a=0;for(let j=0;j<W;j+=2){const v=d[i*W+j];a+=v*v}r[i]=Math.sqrt(a/(W/2))}return b._a={r,th:Math.max(.008,[...r].sort((a,b)=>a-b)[Math.floor(n*.95)]*.12)}}
 function duckAuto(p,t0,from){const iv=[];clips.filter(k=>k.voice).forEach(k=>{const{r,th}=activity(bufs[k.src]);for(let i=Math.floor(k.off/.05);i<Math.min(r.length,Math.ceil((k.off+k.dur)/.05));i++)if(r[i]>th){const t=k.start+i*.05-k.off;iv.push([t,t+.05])}});
@@ -34,8 +42,16 @@ function duckAuto(p,t0,from){const iv=[];clips.filter(k=>k.voice).forEach(k=>{co
  m.forEach(([a,b])=>{a=a-.1-from;b=b+.05-from;if(b<0)return;a=Math.max(0,a);p.setValueAtTime(1,t0+a);p.linearRampToValueAtTime(lo,t0+a+.2);p.setValueAtTime(lo,t0+b+.2);p.linearRampToValueAtTime(1,t0+b+.8)})}
 function build(c,t0,from){const out=c.createGain(),vb=c.createGain(),mb=c.createGain();out.gain.value=S.master/100;
  if(S.master>100){const l=c.createDynamicsCompressor();l.threshold.value=-4;l.knee.value=0;l.ratio.value=20;l.attack.value=.002;l.release.value=.12;out.connect(l).connect(c.destination)}else out.connect(c.destination);
- vb.connect(out);mb.connect(out);let end=0;
- clips.forEach(k=>{const e=k.start+k.dur;end=Math.max(end,e);if(e<=from)return;const s=c.createBufferSource(),g=c.createGain(),sk=Math.max(0,from-k.start);s.buffer=bufs[k.src];g.gain.value=k.vol/100;s.connect(g).connect(k.voice?vb:mb);s.start(t0+Math.max(0,k.start-from),k.off+sk,k.dur-sk)});
+ /* ── reverb wet/dry bus ── */
+ let clipDest;
+ if(S.reverb){const conv=c.createConvolver();conv.buffer=makeIR(c);const wet=c.createGain(),dry=c.createGain();const w=S.rvWet/100;wet.gain.value=w;dry.gain.value=1-w;const pre=c.createGain();pre.connect(conv).connect(wet).connect(out);pre.connect(dry).connect(out);clipDest=pre}else clipDest=out;
+ vb.connect(clipDest);mb.connect(clipDest);let end=0;
+ clips.forEach(k=>{const e=k.start+k.dur;end=Math.max(end,e);if(e<=from)return;const s=c.createBufferSource(),g=c.createGain(),sk=Math.max(0,from-k.start);s.buffer=bufs[k.src];g.gain.value=k.vol/100;
+  /* ── per-clip fade in / fade out ── */
+  const fi=k.fadeIn||0,fo=k.fadeOut||0,clipStart=t0+Math.max(0,k.start-from),clipEnd=t0+Math.max(0,e-from);
+  if(fi>0){const fs=Math.max(clipStart,t0+Math.max(0,k.start-from)),fe=fs+Math.max(0,fi-Math.max(0,from-k.start));if(fe>fs){g.gain.setValueAtTime(0,fs);g.gain.linearRampToValueAtTime(k.vol/100,fe)}}
+  if(fo>0){const fe=clipEnd,fs=Math.max(clipStart,fe-fo);if(fe>fs){g.gain.setValueAtTime(k.vol/100,fs);g.gain.linearRampToValueAtTime(0,fe)}}
+  s.connect(g).connect(k.voice?vb:mb);s.start(t0+Math.max(0,k.start-from),k.off+sk,k.dur-sk)});
  if(S.duck)duckAuto(mb.gain,t0,from);return end}
 function start(){stop(true);if(!clips.length)return toast('Add some audio first');const c=new AC(),t0=c.currentTime+.05,end=build(c,t0,ph>=endT()?0:ph),from=ph>=endT()?0:ph;play={c};
  $('#play').textContent='Pause';(function tick(){if(!play||play.c!==c)return;ph=from+Math.max(0,c.currentTime-t0);if(ph>=end){ph=end;stop();return}scrollTo();draw();$('#tc').textContent=fmt(ph);requestAnimationFrame(tick)})()}
@@ -71,12 +87,19 @@ function draw(){const w=cv.clientWidth,h=cv.clientHeight,sc=wrap.scrollLeft;x.se
   x.save();x.beginPath();x.rect(x0,y0,cw,ch);x.clip();x.fillStyle='#1c3a3f';x.fillRect(x0,y0,cw,ch);x.fillStyle='#5eead4';const mid=y0+ch/2;
   /* waveform bars: really small — 2px wide, 1px gap, max height half the clip height */
   for(let i=Math.max(0,Math.floor(-x0/3));i<Math.min(cw/3,(w-x0)/3+1);i++){const ts=c.off+i*3/pps,te=ts+3/pps;let m=0;for(let j=Math.floor(ts/B);j<=Math.min(pk.length-1,Math.floor(te/B));j++)if(pk[j]>m)m=pk[j];const bh=Math.max(1,m*(ch*0.38));x.fillRect(x0+i*3,mid-bh/2,2,bh)}
-  x.fillStyle='#eafffb';x.fillText((c.voice?'[voice] ':'')+c.name,Math.max(x0,0)+6,y0+3);x.restore();
+  x.fillStyle='#eafffb';x.fillText((c.voice?'[voice] ':'')+c.name,Math.max(x0,0)+6,y0+3);
+  /* ── fade in/out gradient overlays ── */
+  if(c.fadeIn>0){const fw=Math.min(c.fadeIn*pps,cw);const gi=x.createLinearGradient(x0,0,x0+fw,0);gi.addColorStop(0,'rgba(20,22,26,0.85)');gi.addColorStop(1,'rgba(20,22,26,0)');x.fillStyle=gi;x.fillRect(x0,y0,fw,ch)}
+  if(c.fadeOut>0){const fw=Math.min(c.fadeOut*pps,cw);const go=x.createLinearGradient(x0+cw-fw,0,x0+cw,0);go.addColorStop(0,'rgba(20,22,26,0)');go.addColorStop(1,'rgba(20,22,26,0.85)');x.fillStyle=go;x.fillRect(x0+cw-fw,y0,fw,ch)}
+  x.restore();
   if(c.id==sel){x.strokeStyle='#ffb020';x.lineWidth=2;x.strokeRect(x0+1,y0+1,cw-2,ch-2);x.lineWidth=1;x.fillStyle='#ffb020';x.fillRect(x0,y0+ch/2-10,5,20);x.fillRect(x0+cw-5,y0+ch/2-10,5,20)}});
  if(!clips.length){x.fillStyle='#8f97a6';x.font='16px Manrope,sans-serif';x.textAlign='center';x.fillText('Drop audio files here, or press Add audio',w/2,RH+LH*1.4);x.textAlign='left'}
  const px=ph*pps-sc;x.fillStyle='#ffb020';x.fillRect(px-1,0,2,h);x.beginPath();x.moveTo(px-6,0);x.lineTo(px+6,0);x.lineTo(px,9);x.fill()}
 function touch(){layout();const s=get(sel),sm=seam();$('#split').textContent=sm?'Join':'Trim here';$('#voice').textContent=s&&s.voice?'Unmark voice':'Mark as voice';
  ['dup','del','voice'].forEach(i=>$('#'+i).disabled=!s);$('#undo').disabled=!undo.length;$('#redo').disabled=!redo.length;$('#cn').textContent=s?s.name:'Click a clip to select it';cvb.set(s?s.vol:100);$('#cvl').textContent='Clip volume '+(s?s.vol:100)+'%';
+ /* fade controls */
+ const fi=s?s.fadeIn||0:0,fo=s?s.fadeOut||0:0;fib.set(fi);$('#fil').textContent=fi.toFixed(1)+' s';fob.set(fo);$('#fol').textContent=fo.toFixed(1)+' s';
+ ['fib','fob'].forEach(id=>document.getElementById(id).style.opacity=s?'1':'0.35');
  $('#tc').textContent=fmt(ph);draw();if(play){const p=ph;start()}}
 /* pointer */
 function hit(e){const r=cv.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top,sc=wrap.scrollLeft;if(py<RH)return{px,py,ruler:1};const l=Math.floor((py-RH)/LH);
@@ -104,9 +127,18 @@ wrap.addEventListener('wheel',e=>{if(e.ctrlKey||e.metaKey){e.preventDefault();zo
 /* controls: 50 bars on volumes for smooth mixer feel, step-of-2 from Bars() */
 let vp=null;const zb=Bars($('#zb'),Z.length-1,0,Z.length-1,zi,null,v=>zoom(Math.round(v),wrap.clientWidth/2));
 const cvb=Bars($('#cvb'),50,0,200,100,100,v=>{const c=get(sel);if(!c)return;if(vp===null)vp=js();c.vol=v;$('#cvl').textContent='Clip volume '+v+'%'});$('#cvb').addEventListener('pointerup',()=>{if(vp!==null){commit(vp);vp=null;touch()}});
+/* fade in / fade out bars — max 8 s, 20 steps of 0.4 s each */
+let fp=null;
+const fib=Bars($('#fib'),20,0,8,0,null,v=>{const c=get(sel);if(!c)return;if(fp===null)fp=js();c.fadeIn=v;$('#fil').textContent=v.toFixed(1)+' s';draw()});
+$('#fib').addEventListener('pointerup',()=>{if(fp!==null){commit(fp);fp=null;touch()}});
+const fob=Bars($('#fob'),20,0,8,0,null,v=>{const c=get(sel);if(!c)return;if(fp===null)fp=js();c.fadeOut=v;$('#fol').textContent=v.toFixed(1)+' s';draw()});
+$('#fob').addEventListener('pointerup',()=>{if(fp!==null){commit(fp);fp=null;touch()}});
 Bars($('#mb'),50,0,200,100,100,v=>{S.master=v;$('#ml').textContent='Master '+v+'%'});$('#mb').addEventListener('pointerup',()=>play&&start());
 Bars($('#db'),20,5,80,25,null,v=>{S.depth=v;$('#dl').textContent=S.duck?'Music drops to '+v+'% while the voice speaks.':'Off: music plays at a steady level.'});
 $('#duck').onchange=e=>{S.duck=e.target.checked;$('#dl').textContent=S.duck?'Mark a clip as voice, then music drops to '+S.depth+'% while it speaks.':'Off: music plays at a steady level.';if(play)start()};
+/* reverb controls */
+Bars($('#rvb'),20,0,100,40,null,v=>{S.rvWet=v;$('#rvl').textContent=S.reverb?'Reverb wet '+v+'% — more = wetter room.':'Off: dry signal only.';if(play)start()});
+$('#rv-on').onchange=e=>{S.reverb=e.target.checked;$('#rvl').textContent=S.reverb?'Reverb wet '+S.rvWet+'% — adjust the bar for room size.':'Off: dry signal only.';if(play)start()};
 $('#add').onclick=()=>$('#file').click();$('#file').onchange=e=>{addFiles(e.target.files);e.target.value=''};
 addEventListener('dragover',e=>e.preventDefault());addEventListener('drop',e=>{e.preventDefault();addFiles(e.dataTransfer.files)});
 $('#undo').onclick=()=>go(undo,redo);$('#redo').onclick=()=>go(redo,undo);$('#split').onclick=doSplit;$('#dup').onclick=()=>doDup();
