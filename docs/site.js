@@ -1,35 +1,86 @@
-// Detect base path for GitHub Pages (repo served under /Mk-studio/)
+/**
+ * site.js — shared code that runs on every page
+ *
+ * Responsibilities
+ * ────────────────
+ * 1. Inject the navigation header (replaces the placeholder <div id="top">).
+ * 2. Highlight the active nav link.
+ * 3. On the mix page, warn the user before they navigate away with unsaved work.
+ * 4. Inject the footer text.
+ */
+
+'use strict';
+
+// Read the base path from the <meta name="base-path"> tag.
+// This is empty when running locally, and "/Mk-studio" when served on GitHub Pages.
 const base = document.querySelector('meta[name="base-path"]')?.content || '';
 
-document.getElementById('top').outerHTML = `<header class="top"><a class="logo" href="${base}/"><svg width="26" height="20" fill="#ffb020"><rect y="9" width="5" height="11"/><rect x="7" y="2" width="5" height="18"/><rect x="14" y="6" width="5" height="14"/><rect x="21" y="12" width="5" height="8"/></svg>Studio</a><nav><a href="${base}/mix.html">Mix</a><a href="${base}/download.html">Download</a><a href="${base}/how.html">How it works</a></nav></header>`;
-document.querySelectorAll('.top nav a').forEach(a => {
-  const aPath = a.pathname.replace(/\.html$/, '');
-  const locPath = location.pathname.replace(/\.html$/, '');
-  if (aPath === locPath) a.classList.add('on');
+// ── 1. Inject the header ───────────────────────────────────────────────────
+document.getElementById('top').outerHTML = `
+<header class="top">
+  <a class="logo" href="${base}/">
+    <svg width="26" height="20" fill="#ffb020">
+      <rect y="9"   width="5" height="11"/>
+      <rect x="7"   y="2"  width="5" height="18"/>
+      <rect x="14"  y="6"  width="5" height="14"/>
+      <rect x="21"  y="12" width="5" height="8"/>
+    </svg>
+    Studio
+  </a>
+  <nav>
+    <a href="${base}/mix.html">Mix</a>
+    <a href="${base}/download.html">Download</a>
+    <a href="${base}/how.html">How it works</a>
+  </nav>
+</header>`;
+
+// ── 2. Highlight the active nav link ──────────────────────────────────────
+// Strip .html suffixes from both sides before comparing so that
+// /mix.html and /mix both match the same link.
+document.querySelectorAll('.top nav a').forEach(link => {
+  const linkPath     = link.pathname.replace(/\.html$/, '');
+  const currentPath  = location.pathname.replace(/\.html$/, '');
+  if (linkPath === currentPath) link.classList.add('on');
 });
 
-if (location.pathname.endsWith('/mix.html') || location.pathname.endsWith('/mix')) {
-  const askBeforeLeave = (target) => {
+// ── 3. Unsaved-work guard (mix page only) ─────────────────────────────────
+const isMixPage =
+  location.pathname.endsWith('/mix.html') ||
+  location.pathname.endsWith('/mix');
+
+if (isMixPage) {
+  /**
+   * Ask the user to confirm navigation if the mix has been changed.
+   * Returns true if navigation should proceed, false if it should be blocked.
+   */
+  function confirmLeave() {
     if (!window.__studio_dirty) return true;
     const ok = window.confirm('Leaving this page will discard your current mix. Are you sure?');
     if (ok) window.__studio_dirty = false;
     return ok;
-  };
+  }
 
+  // Intercept clicks on internal links
   document.querySelectorAll('a[href]').forEach(link => {
     const href = link.getAttribute('href');
+    // Only intercept relative links — not anchors or external URLs
     if (!href || href.startsWith('#') || href.startsWith('http')) return;
     link.addEventListener('click', (event) => {
-      if (!askBeforeLeave(href)) event.preventDefault();
+      if (!confirmLeave()) event.preventDefault();
     });
   });
 
+  // Browser back/forward / tab close
   window.addEventListener('beforeunload', (event) => {
     if (!window.__studio_dirty) return;
     event.preventDefault();
-    event.returnValue = '';
+    event.returnValue = ''; // required for Chrome to show the dialog
   });
 }
 
-const f = document.getElementById('foot');
-if (f) f.innerHTML = 'Audio stays in your browser. Only download content you own or have permission to save.';
+// ── 4. Inject the footer ───────────────────────────────────────────────────
+const footer = document.getElementById('foot');
+if (footer) {
+  footer.textContent =
+    'Audio stays in your browser. Only download content you own or have permission to save.';
+}
