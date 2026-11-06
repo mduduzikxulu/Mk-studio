@@ -36,8 +36,18 @@
     </p>
   </div>
 
+  <!-- ── Server offline banner — shown when app.py is not running ─ -->
+  <!-- Hidden by default; the health-check in the script below shows it -->
+  <div id="offline-banner" class="card" style="display:none; margin-top:18px; border-color:var(--red)">
+    <h3 style="margin-bottom:6px; color:var(--red)">⚠️ Server not reachable</h3>
+    <p style="color:var(--mu); margin:0">
+      Run <code>python app.py</code> in the project folder, then refresh this page.
+      The downloader will activate automatically once the server responds.
+    </p>
+  </div>
+
   <!-- ── Downloader UI ─────────────────────────────────────────── -->
-  <div class="card" style="margin-top:18px">
+  <div id="downloader-card" class="card" style="margin-top:18px">
 
     <!-- Platform chips — clicking one sets the placeholder text and clears the form -->
     <div class="chips" id="chips">
@@ -96,21 +106,64 @@
  * Download page logic
  *
  * Flow:
- *  1. User selects a platform chip (optional) and pastes a URL.
- *  2. After 600 ms of inactivity, /api/info is called to fetch title/thumb.
- *  3. User clicks Download or Audio only → POST /api/download → job id.
- *  4. Poll /api/progress/:id every 800 ms until done or error.
- *  5. When done, /api/file/:id triggers the browser download.
+ *  1. On load, ping /api/info to check if the local server is running.
+ *     If not → show an offline banner and disable the UI.
+ *  2. User selects a platform chip (optional) and pastes a URL.
+ *  3. After 600 ms of inactivity, /api/info is called to fetch title/thumb.
+ *  4. User clicks Download or Audio only → POST /api/download → job id.
+ *  5. Poll /api/progress/:id every 800 ms until done or error.
+ *  6. When done, /api/file/:id triggers the browser download.
  */
 
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
-  kind:       'video',     // 'video' | 'audio'
-  job:        null,        // active job id
-  currentUrl: '',          // last successfully inspected URL
-  site:       'YouTube',   // selected platform label
+  kind:        'video',    // 'video' | 'audio'
+  job:         null,       // active job id
+  currentUrl:  '',         // last successfully inspected URL
+  site:        'YouTube',  // selected platform label
+  serverOnline: false,     // set to true once the server responds
   selected: { title: '', thumb: '', duration: '', site: '', uploader: '' },
 };
+
+// ── Element references ─────────────────────────────────────────────────────
+const urlInput     = document.getElementById('url');
+const downloaderCard = document.getElementById('downloader-card');
+const offlineBanner  = document.getElementById('offline-banner');
+
+// ── Server health check ────────────────────────────────────────────────────
+// Ping the backend with a clearly invalid URL on page load.
+// A 400 response (bad URL) means the server is up.
+// A network error (fetch throws) means app.py is not running.
+async function checkServer() {
+  try {
+    const res = await fetch('/api/info', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ url: 'ping' }),
+      signal:  AbortSignal.timeout(4000),  // 4 s timeout
+    });
+    // Any HTTP response (even 400) means Flask is reachable
+    state.serverOnline = true;
+    offlineBanner.style.display  = 'none';
+    downloaderCard.style.opacity = '1';
+    downloaderCard.style.pointerEvents = 'auto';
+    urlInput.disabled = false;
+    showMsg('Paste or type a full URL to fetch the video.');
+  } catch {
+    // Network error — server is not reachable
+    state.serverOnline = false;
+    offlineBanner.style.display  = 'block';
+    downloaderCard.style.opacity = '0.45';
+    downloaderCard.style.pointerEvents = 'none';
+    urlInput.disabled = true;
+    showMsg('Server offline — run app.py locally to use the downloader.', true);
+  }
+}
+
+// Run the check immediately, then retry every 8 s so the UI recovers
+// automatically once the user starts the server without reloading the page.
+checkServer();
+setInterval(checkServer, 8000);
 
 // ── Platform chips ─────────────────────────────────────────────────────────
 const chipEls = document.querySelectorAll('#chips .chip');
@@ -118,11 +171,11 @@ const chipEls = document.querySelectorAll('#chips .chip');
 function setChip(el) {
   chipEls.forEach(chip => chip.classList.toggle('on', chip === el));
   state.site = el.dataset.site;
-  document.getElementById('url').placeholder = `Paste the ${state.site} link here`;
+  urlInput.placeholder = `Paste the ${state.site} link here`;
 
   // Clear any previous result when switching platforms
   document.getElementById('preview').style.display = 'none';
-  document.getElementById('url').value = '';
+  urlInput.value   = '';
   state.currentUrl = '';
   showMsg('Paste or type a full URL to fetch the video.');
 }
@@ -139,19 +192,20 @@ function showMsg(text, isError = false) {
 // ── Form reset ─────────────────────────────────────────────────────────────
 function resetForm() {
   state.currentUrl = '';
-  document.getElementById('url').value = '';
+  urlInput.value   = '';
   document.getElementById('preview').style.display = 'none';
-  document.getElementById('pbar').style.width = '0%';
+  document.getElementById('pbar').style.width      = '0%';
   showMsg('Paste or type a full URL to fetch the video.');
 }
 
 // ── URL inspection ─────────────────────────────────────────────────────────
-const urlInput = document.getElementById('url');
 let inspectTimer      = null;
 let inspectController = null;
 let inspectRequest    = 0;   // incremented to discard stale responses
 
 async function inspectUrl(rawUrl) {
+  if (!state.serverOnline) return; // don't attempt if server is down
+
   const url = rawUrl.trim();
   if (!url || !/^https?:\/\//i.test(url)) return;
   if (url !== urlInput.value.trim()) return; // user already changed the input
@@ -174,7 +228,7 @@ async function inspectUrl(rawUrl) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Could not read that link.');
 
-    // Discard if a newer request came in or the URL changed
+    // Discard if a newer request arrived or the URL changed while we waited
     if (requestId !== inspectRequest || url !== urlInput.value.trim()) return;
 
     state.selected = data;
@@ -193,7 +247,15 @@ async function inspectUrl(rawUrl) {
   } catch (error) {
     if (requestId !== inspectRequest || error.name === 'AbortError') return;
     state.currentUrl = '';
-    showMsg(error.message || 'Could not read that link.', true);
+
+    // Distinguish a network failure from a normal API error
+    const isNetworkErr = error instanceof TypeError && error.message.toLowerCase().includes('fetch');
+    showMsg(
+      isNetworkErr
+        ? 'Could not reach the server. Is app.py still running?'
+        : (error.message || 'Could not read that link.'),
+      true
+    );
     document.getElementById('preview').style.display = 'none';
   }
 }
@@ -256,7 +318,13 @@ async function startDownload(kind) {
     state.job = data.id;
     await pollProgress(data.id);
   } catch (error) {
-    showMsg(error.message || 'Download failed.', true);
+    const isNetworkErr = error instanceof TypeError && error.message.toLowerCase().includes('fetch');
+    showMsg(
+      isNetworkErr
+        ? 'Lost connection to the server. Is app.py still running?'
+        : (error.message || 'Download failed.'),
+      true
+    );
     btn.disabled = false;
   }
 }
@@ -271,7 +339,7 @@ async function pollProgress(jobId) {
     document.getElementById('pbar').style.width = `${pct}%`;
 
     if (data.status === 'done') {
-      // Trigger the browser's built-in download
+      // Trigger the browser's built-in download prompt
       const a    = document.createElement('a');
       a.href     = `/api/file/${jobId}`;
       a.download = 'studio-download';
