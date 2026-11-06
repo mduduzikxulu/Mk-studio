@@ -8,7 +8,7 @@
   <p style="color:var(--mu);margin-top:12px">To use it, <a href="https://github.com/xulu2381/Mk-studio" style="color:var(--amb)">clone the repo</a>, install dependencies (<code>pip install -r requirements.txt</code>), and run <code>python app.py</code>.</p>
 </div>
 <div class="card" style="margin-top:18px">
-  <div class="chips" id="chips"><button class="chip on" data-kind="video" type="button">YouTube</button><button class="chip" data-kind="video" type="button">TikTok</button><button class="chip" data-kind="video" type="button">Instagram</button><button class="chip" data-kind="video" type="button">Facebook</button></div>
+  <div class="chips" id="chips"><button class="chip on" data-site="YouTube" type="button">YouTube</button><button class="chip" data-site="TikTok" type="button">TikTok</button><button class="chip" data-site="Instagram" type="button">Instagram</button><button class="chip" data-site="Facebook" type="button">Facebook</button></div>
   <input class="url" id="url" placeholder="Paste the YouTube link here" autocomplete="off" aria-label="Video URL">
   <div class="row" style="margin-top:12px"><button id="reset" type="button">Clear</button></div>
   <div class="msg" id="dmsg" style="color:var(--amb)" aria-live="polite">Paste or type a full URL to fetch the video.</div>
@@ -20,10 +20,17 @@
 </main>
 <footer id="foot"></footer><script src="site.js"></script>
 <script>
-const state = { kind: 'video', job: null, currentUrl: '', selected: { title: '', thumb: '', duration: '', site: '', uploader: '' } };
+const state = { kind: 'video', job: null, currentUrl: '', site: 'YouTube', selected: { title: '', thumb: '', duration: '', site: '', uploader: '' } };
 const chipEls = document.querySelectorAll('#chips .chip');
 const setChip = (el) => {
   chipEls.forEach(chip => chip.classList.toggle('on', chip === el));
+  state.site = el.dataset.site;
+  document.getElementById('url').placeholder = `Paste the ${state.site} link here`;
+  // clear any previous result when switching platforms
+  document.getElementById('preview').style.display = 'none';
+  document.getElementById('url').value = '';
+  state.currentUrl = '';
+  msg('Paste or type a full URL to fetch the video.');
 };
 chipEls.forEach((chip) => chip.addEventListener('click', () => setChip(chip)));
 const msg = (text, isErr = false) => {
