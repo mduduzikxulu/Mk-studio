@@ -11,14 +11,12 @@
 
 'use strict';
 
-// Read the base path from the <meta name="base-path"> tag.
-// This is empty when running locally, and "/Mk-studio" when served on GitHub Pages.
-const base = document.querySelector('meta[name="base-path"]')?.content || '';
-
 // ── 1. Inject the header ───────────────────────────────────────────────────
+// Links are relative so the site works whether it is served at the root
+// (locally via app.py) or under /Mk-studio/ (GitHub Pages).
 document.getElementById('top').outerHTML = `
 <header class="top">
-  <a class="logo" href="${base}/">
+  <a class="logo" href=".">
     <svg width="26" height="20" fill="#ffb020">
       <rect y="9"   width="5" height="11"/>
       <rect x="7"   y="2"  width="5" height="18"/>
@@ -28,9 +26,9 @@ document.getElementById('top').outerHTML = `
     Studio
   </a>
   <nav>
-    <a href="${base}/mix.html">Mix</a>
-    <a href="${base}/download.html">Download</a>
-    <a href="${base}/how.html">How it works</a>
+    <a href="mix.html">Mix</a>
+    <a href="download.html">Download</a>
+    <a href="how.html">How it works</a>
   </nav>
 </header>`;
 

@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
    Studio — global styles
    Colour palette is defined as CSS custom properties so any
    contributor can retheme the app by changing this one block.
@@ -105,11 +105,13 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ── Bars — mixer-style stepped fader control ───────────────── */
 /* Used for zoom, clip volume and music depth.
-   Each <i> is one "slit". Filled slits turn amber; red = above threshold. */
+   Each <i> is one glowing LED capsule. Filled LEDs glow amber; red =
+   above threshold. Smooth transitions animate the fill as you drag,
+   and the leading (peak) LED gently pulses for a live, futuristic feel. */
 .bars {
   display: flex;
-  gap: 1.5px;
-  height: 18px;
+  gap: 2.5px;
+  height: 22px;
   cursor: ew-resize;
   touch-action: none;
   user-select: none;
@@ -119,13 +121,34 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 .bars i {
   flex: 1;
   height: 100%;
-  background: #252930;
-  border-radius: 1px;
-  transition: background 0.04s;
+  background: linear-gradient(180deg, #2a2e37, #202329);
+  border-radius: 5px;
+  transition: background 0.14s ease, box-shadow 0.14s ease, transform 0.1s ease;
 }
 
-.bars i.on      { background: var(--amb); }
-.bars i.on.hot  { background: var(--red); }  /* above the "safe" threshold */
+/* Filled LEDs — amber glow with a soft top highlight for depth */
+.bars i.on {
+  background: linear-gradient(180deg, #ffd278, #ffb020);
+  box-shadow: 0 0 6px rgba(255, 176, 32, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+/* Above the safe threshold — red glow */
+.bars i.on.hot {
+  background: linear-gradient(180deg, #ff9888, #ff4d3d);
+  box-shadow: 0 0 6px rgba(255, 77, 61, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+/* Leading (peak) LED — brighter, gently breathing */
+.bars i.on.lead        { animation: bars-lead 1.1s ease-in-out infinite; }
+.bars i.on.lead.hot    { animation: bars-lead-hot 1.1s ease-in-out infinite; }
+@keyframes bars-lead {
+  0%, 100% { box-shadow: 0 0 6px rgba(255, 176, 32, 0.5), inset 0 1px 0 rgba(255,255,255,0.25); }
+  50%      { box-shadow: 0 0 13px rgba(255, 176, 32, 0.9), inset 0 1px 0 rgba(255,255,255,0.25); }
+}
+@keyframes bars-lead-hot {
+  0%, 100% { box-shadow: 0 0 6px rgba(255, 77, 61, 0.55), inset 0 1px 0 rgba(255,255,255,0.25); }
+  50%      { box-shadow: 0 0 13px rgba(255, 77, 61, 0.95), inset 0 1px 0 rgba(255,255,255,0.25); }
+}
 
 /* ── Footer ─────────────────────────────────────────────────── */
 footer {
@@ -300,58 +323,204 @@ h2.sec { font-size: 30px; margin: 80px 0 0; }
    MIXER (mix.html / mix.js)
    ================================================================ */
 
-.studio { padding: 18px 20px; }
+/* ================================================================
+   MIXER PAGE — FL Studio Playlist aesthetic
+   Dark teal/slate palette, tight toolbars, dense grid canvas.
+   ================================================================ */
 
-/* Toolbar rows */
-.tools,
-.trans {
+/* Override page background for mix page only */
+body:has(.studio) {
+  background: #1a2130;
+}
+
+.studio {
+  padding: 0;
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  height: calc(100vh - 52px); /* fill below nav */
+  overflow: hidden;
+}
+
+/* ── Toolbar strip ── */
+.tools {
+  display: flex;
+  gap: 6px;
   flex-wrap: wrap;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 0;
+  padding: 5px 10px;
+  background: #1e2535;
+  border-bottom: 1px solid #111820;
+  min-height: 40px;
+  flex-shrink: 0;
 }
 
-/* Button groups separated by a thin divider */
-.grp { display: flex; gap: 6px; padding-right: 10px; border-right: 1px solid var(--ln); }
+/* Button groups */
+.grp {
+  display: flex;
+  gap: 4px;
+  padding-right: 8px;
+  border-right: 1px solid #283040;
+}
 .grp:last-child { border: 0; }
 
-/* Zoom bar and time counter */
-#zb  { width: 120px; }
-#tc  { font: 600 20px Unbounded, monospace; min-width: 130px; }
+/* Restyle buttons for FL Studio look */
+.studio button,
+.studio .btn {
+  font: 600 12px Manrope, sans-serif;
+  padding: 5px 11px;
+  border-radius: 4px;
+  background: #252f3e;
+  border: 1px solid #1a2230;
+  color: #9aaabb;
+  transition: background .1s, color .1s;
+}
+.studio button:hover  { background: #2e3a4e; color: #c8d4e0; }
+.studio button:disabled { opacity: 0.3; cursor: not-allowed; }
+.studio button.amb    { background: #ffb020; color: #1a1205; border-color: #e0960a; }
+.studio button.amb:hover { background: #ffc040; }
 
-/* Timeline canvas container */
+/* ── Transport strip ── */
+.trans {
+  display: flex;
+  gap: 8px;
+  flex-wrap: nowrap;
+  align-items: center;
+  margin-bottom: 0;
+  padding: 4px 10px;
+  background: #19222e;
+  border-bottom: 1px solid #111820;
+  flex-shrink: 0;
+}
+
+/* Time counter */
+#tc {
+  font: 700 18px Unbounded, monospace;
+  color: #52d458;
+  text-shadow: 0 0 8px rgba(82,212,88,.5);
+  min-width: 110px;
+  letter-spacing: .04em;
+}
+
+/* Zoom controls */
+#zb { width: 100px; }
+
+/* ── Timeline area — the main grid ── */
+.studio-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Left sidebar — track names (labels injected by draw logic) */
+.studio-sidebar {
+  width: 140px;
+  flex-shrink: 0;
+  background: #1b2535;
+  border-right: 1px solid #111820;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #2a3446 #1b2535;
+}
+.studio-sidebar::-webkit-scrollbar { width: 5px; }
+.studio-sidebar::-webkit-scrollbar-track { background: #1b2535; }
+.studio-sidebar::-webkit-scrollbar-thumb { background: #2a3446; border-radius:3px; }
+
+/* Header cell above ruler */
+.studio-sidebar-header {
+  height: 28px; /* matches RULER_H */
+  background: #161f2c;
+  border-bottom: 1px solid #0e1520;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font: 700 9px Manrope, sans-serif;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: #3a4a5a;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+/* One track label row */
+.sidebar-track {
+  height: 42px; /* matches LANE_H below */
+  display: flex;
+  align-items: center;
+  padding: 0 8px 0 10px;
+  border-bottom: 1px solid #111820;
+  gap: 7px;
+  cursor: default;
+  transition: background .1s;
+}
+.sidebar-track:nth-child(odd)  { background: #1c2637; }
+.sidebar-track:nth-child(even) { background: #192232; }
+.sidebar-track:hover { background: #243040; }
+.sidebar-track.selected { background: #1e3055; }
+
+/* Small green dot LED */
+.sidebar-led {
+  width: 6px; height: 6px;
+  border-radius: 1px;
+  background: #52d458;
+  box-shadow: 0 0 4px rgba(82,212,88,.7);
+  flex-shrink: 0;
+}
+.sidebar-led.off { background: #2a3446; box-shadow: none; }
+
+.sidebar-name {
+  font: 500 11px Manrope, sans-serif;
+  color: #7a8fa8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-track.selected .sidebar-name { color: #7eb8ff; }
+
+/* ── Main canvas / timeline container ── */
 #wrap {
   position: relative;
+  flex: 1;
   overflow-x: auto;
-  background: var(--bg);
-  border: 1px solid var(--ln);
-  border-radius: 12px;
+  overflow-y: hidden;
+  background: #1a2333;
+  border: none;
+  border-radius: 0;
 }
 #cv { position: sticky; left: 0; display: block; }
-#sp { position: absolute; top: 0; left: 0; height: 1px; } /* scroll width sentinel */
+#sp { position: absolute; top: 0; left: 0; height: 1px; }
 
-/* Panel below the timeline (clip options / export) */
+/* ── Bottom options panels ── */
 .opts {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
-  margin-top: 14px;
+  gap: 0;
+  margin-top: 0;
+  flex-shrink: 0;
+  border-top: 1px solid #111820;
 }
 .opts > div {
-  background: var(--p);
-  border: 1px solid var(--ln);
-  border-radius: 12px;
-  padding: 16px;
+  background: #1b2535;
+  border: none;
+  border-right: 1px solid #111820;
+  border-radius: 0;
+  padding: 12px 16px;
 }
-.opts h3     { font-size: 14px; margin-bottom: 10px; }
-.opts label  { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
-.opts small  { color: var(--mu); display: block; margin-top: 8px; }
-.opts .bars  { width: 100%; height: 22px; }
+.opts > div:last-child { border-right: none; }
+.opts h3 {
+  font-size: 12px;
+  margin-bottom: 8px;
+  color: #c8d4e0;
+  letter-spacing: .03em;
+}
+.opts label { display: flex; gap: 8px; align-items: center; margin: 6px 0; font-size: 13px; }
+.opts small { color: #4a6070; display: block; margin-top: 6px; font-size: 11px; }
+.opts .bars { width: 100%; height: 18px; }
 
 @media (max-width: 860px) {
-  .opts  { grid-template-columns: 1fr; }
-  .master { margin-left: 0; }
+  .opts { grid-template-columns: 1fr; }
 }
 
 /* Toast notification */
@@ -360,78 +529,354 @@ h2.sec { font-size: 30px; margin: 80px 0 0; }
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--p2);
+  background: #252f3e;
   border: 1px solid var(--amb);
   padding: 10px 18px;
-  border-radius: 9px;
+  border-radius: 6px;
   display: none;
   z-index: 20;
-}
-
-/* ── All Volume dialog ──────────────────────────────────────── */
-.volume-dialog {
-  width: min(480px, calc(100vw - 28px));
-  max-height: min(78vh, 720px);
-  padding: 0;
-  background: var(--p);
-  color: var(--tx);
-  border: 1px solid var(--ln);
-  border-radius: 12px;
-  box-shadow: 0 24px 72px #000b;
-  overflow: hidden;
-}
-.volume-dialog::backdrop { background: #0009; backdrop-filter: blur(2px); }
-
-.volume-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--ln);
-}
-.volume-head h2     { font-size: 17px; }
-.volume-head button { width: 36px; height: 36px; padding: 0; font-size: 22px; line-height: 1; }
-
-.volume-row {
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--ln);
-}
-.volume-row-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 9px;
-}
-.volume-row-head strong { font-size: 14px; }
-.volume-row-head output {
-  font-variant-numeric: tabular-nums;
-  color: var(--mu);
   font-size: 13px;
+  color: #c8d4e0;
 }
 
-.volume-identity { display: flex; min-width: 0; flex-direction: column; }
-.volume-identity small {
-  max-width: 340px;
+/* ══════════════════════════════════════════════════════════════
+   FL STUDIO VERTICAL MIXER — All Volume panel
+   Layout: title bar → scrollable horizontal strip row.
+   Each strip (top→bottom):
+     rotated name label | LED dot | knob | vertical fader | value | bottom icons
+   Panel is resizable from all 8 edges/corners and draggable.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Backdrop ── */
+.vm-backdrop { position:fixed; inset:0; z-index:49; background:rgba(0,0,0,.65); backdrop-filter:blur(3px); }
+.vm-backdrop[hidden] { display:none; }
+
+/* ── Panel shell ── */
+.volume-dialog {
+  position: fixed;
+  z-index: 50;
+  width: 760px;
+  height: 420px;
+  top:  calc(50vh - 210px);
+  left: calc(50vw - 380px);
+  min-width:  340px;
+  min-height: 260px;
+  max-width: 100vw;
+  max-height: 100vh;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  background: #2b3320;
+  color: #b8c8a0;
+  border: 1px solid #151e0f;
+  border-top: 1px solid #3a4a28;
+  border-radius: 2px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.04);
+  overflow: hidden;
+  will-change: transform;
+  font-family: Manrope, system-ui, sans-serif;
+}
+.volume-dialog[hidden] { display:none; }
+
+/* ── 8 resize handles ── */
+.vm-resize { position:absolute; z-index:10; }
+.vm-resize[data-dir="n"]  { top:0;    left:6px;  right:6px;  height:4px; cursor:n-resize; }
+.vm-resize[data-dir="s"]  { bottom:0; left:6px;  right:6px;  height:4px; cursor:s-resize; }
+.vm-resize[data-dir="e"]  { right:0;  top:6px;   bottom:6px; width:4px;  cursor:e-resize; }
+.vm-resize[data-dir="w"]  { left:0;   top:6px;   bottom:6px; width:4px;  cursor:w-resize; }
+.vm-resize[data-dir="ne"] { top:0;    right:0;   width:8px; height:8px;  cursor:ne-resize; }
+.vm-resize[data-dir="nw"] { top:0;    left:0;    width:8px; height:8px;  cursor:nw-resize; }
+.vm-resize[data-dir="se"] { bottom:0; right:0;   width:8px; height:8px;  cursor:se-resize; }
+.vm-resize[data-dir="sw"] { bottom:0; left:0;    width:8px; height:8px;  cursor:sw-resize; }
+
+/* ── Title bar ── */
+.vm-titlebar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 22px;
+  padding: 0 6px 0 10px;
+  background: linear-gradient(180deg, #1e2a14 0%, #182010 100%);
+  border-bottom: 1px solid #0e1508;
+  user-select: none;
+  cursor: grab;
+}
+.vm-titlebar:active { cursor:grabbing; }
+.vm-title {
+  font: 600 11px Manrope, sans-serif;
+  color: #8ca878;
+  letter-spacing: .04em;
+  pointer-events: none;
+}
+.vm-winbtns { display:flex; gap:3px; }
+.vm-wbtn {
+  width:14px; height:14px;
+  border-radius:2px; border:1px solid rgba(0,0,0,.4);
+  font-size:9px; line-height:14px; text-align:center;
+  cursor:pointer; padding:0;
+  transition: filter .1s;
+}
+.vm-wbtn:hover { filter:brightness(1.4); }
+.vm-wbtn-min   { background:#3a4a28; color:#6a8a50; border-color:#1a2810; }
+.vm-wbtn-max   { background:#3a4a28; color:#6a8a50; border-color:#1a2810; }
+.vm-wbtn-close { background:#5a2a20; color:#c06040; border-color:#2a1008; pointer-events:all; }
+.vm-wbtn-close:hover { background:#7a3a28; color:#e08060; }
+
+/* ── Strips horizontal scroll ── */
+.vm-strips-scroll {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-height: 0;
+  background: #252c18;
+  scrollbar-width: thin;
+  scrollbar-color: #3a4a28 #1e2614;
+}
+.vm-strips-scroll::-webkit-scrollbar       { height:5px; }
+.vm-strips-scroll::-webkit-scrollbar-track { background:#1e2614; }
+.vm-strips-scroll::-webkit-scrollbar-thumb { background:#3a4a28; border-radius:2px; }
+
+/* ── Clip strips container ── */
+.vm-clip-strips-row { display:flex; align-items:stretch; }
+
+/* ── Single channel strip ── */
+.vm-strip {
+  flex: 0 0 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 0 6px;
+  border-right: 1px solid #1a2010;
+  background: linear-gradient(180deg, #2e3822 0%, #252c18 100%);
+  position: relative;
+  cursor: default;
+  transition: background .12s;
+  min-height: 0;
+}
+.vm-strip:hover { background: linear-gradient(180deg, #36422a 0%, #2c3420 100%); }
+
+/* Master strip — slightly wider, highlighted */
+.vm-strip-master {
+  flex-basis: 64px;
+  background: linear-gradient(180deg, #323c24 0%, #282f1c 100%);
+  border-right: 2px solid #121808;
+  --strip-color: #88bb55;
+}
+.vm-strip-master:hover { background: linear-gradient(180deg, #3c4830 0%, #303820 100%); }
+
+/* Selected strip */
+.vm-strip.vm-strip-selected {
+  background: linear-gradient(180deg, #354028 0%, #2a3220 100%) !important;
+  box-shadow: inset 0 0 0 1px #6a9848;
+}
+
+/* ── Rotated channel name ── */
+.vm-strip-name-wrap {
+  flex-shrink: 0;
+  height: 72px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+.vm-strip-name {
+  display: block;
+  font: 600 10px Manrope, sans-serif;
+  color: #8aaa68;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--mu);
-  font-size: 12px;
+  max-width: 68px;
+  /* Rotate the name label like FL Studio */
+  transform: rotate(-90deg);
+  transform-origin: center center;
+  letter-spacing: .03em;
 }
+.vm-strip-master .vm-strip-name { color:#aad060; font-weight:700; }
+.vm-strip.vm-strip-selected .vm-strip-name { color:#c0e880; }
 
-.volume-row input[type="range"] {
+/* ── LED dot ── */
+.vm-strip-led-row {
+  flex-shrink: 0;
+  margin-bottom: 6px;
+}
+.vm-led {
   display: block;
-  width: 100%;
-  height: 24px;
-  margin: 0;
-  accent-color: var(--clip-color, var(--amb)); /* clip-color set inline per row */
-  cursor: pointer;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #1e2a14;
+  border: 1px solid #0e1808;
+}
+.vm-led.vm-led-green {
+  background: radial-gradient(circle at 38% 32%, #88ff60, #44bb20);
+  border-color: #224410;
+  box-shadow: 0 0 5px rgba(80,200,30,.8);
+  animation: vm-led-glow 2s ease-in-out infinite;
+}
+.vm-led.vm-led-hot {
+  background: radial-gradient(circle at 38% 32%, #ffdd60, #ffaa00);
+  border-color: #885500;
+  box-shadow: 0 0 6px rgba(255,180,0,.9);
+  animation: vm-led-glow-hot .8s ease-in-out infinite;
+}
+@keyframes vm-led-glow {
+  0%,100% { box-shadow: 0 0 4px rgba(80,200,30,.6); }
+  50%     { box-shadow: 0 0 9px rgba(80,200,30,1); }
+}
+@keyframes vm-led-glow-hot {
+  0%,100% { box-shadow: 0 0 5px rgba(255,180,0,.7); }
+  50%     { box-shadow: 0 0 11px rgba(255,180,0,1); }
 }
 
-#volume-list { max-height: 55vh; overflow-y: auto; }
-.master-volume-row { border-bottom: 2px solid var(--ln); }
+/* ── Knob ── */
+.vm-strip-knob-wrap {
+  flex-shrink: 0;
+  margin-bottom: 8px;
+}
+.vm-knob {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #4a5438, #1e2418);
+  border: 1px solid #0e1808;
+  box-shadow: 0 2px 6px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.06);
+  position: relative;
+  cursor: pointer;
+  transition: box-shadow .15s;
+}
+.vm-knob:hover {
+  box-shadow: 0 2px 6px rgba(0,0,0,.7),
+              0 0 0 1px var(--strip-color, #6a9848),
+              inset 0 1px 0 rgba(255,255,255,.06);
+}
+.vm-knob-dot {
+  position: absolute;
+  width: 3px; height: 3px;
+  border-radius: 50%;
+  background: var(--strip-color, #88bb55);
+  bottom: 4px; left: 50%;
+  transform: translate(-50%, 0);
+  box-shadow: 0 0 4px var(--strip-color, #88bb55);
+  pointer-events: none;
+}
 
+/* ── Vertical fader slot ── */
+.vm-strip-fader-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0 4px;
+  min-height: 0;
+}
+.vm-fader-slot {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Dark recessed rail */
+.vm-fader-rail {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, #0e1408 0%, #181e10 50%, #0e1408 100%);
+  border-radius: 2px;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.9);
+}
+/* Glowing fill bar — rises from bottom */
+.vm-fader-fill-v {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 5px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  height: var(--fval, 50%);
+  background: linear-gradient(0deg, var(--strip-color, #88bb55) 0%, rgba(180,255,100,.6) 100%);
+  box-shadow: 0 0 6px var(--strip-color, #88bb55);
+  transition: height .07s linear;
+  pointer-events: none;
+  z-index: 1;
+}
+/* Vertical range input — rotated technique */
+.vm-fader-input {
+  position: absolute;
+  z-index: 2;
+  /* Rotate a horizontal range to vertical */
+  writing-mode: vertical-lr;
+  direction: rtl;
+  -webkit-appearance: slider-vertical;
+  appearance: auto;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  cursor: ns-resize;
+  margin: 0; padding: 0; outline: none;
+  opacity: 0;          /* invisible — visuals come from rail + fill above */
+}
+/* Fader cap handle — overlaid via a pseudo-element approach isn't possible
+   for the thumb, so we use a separate absolutely-positioned div driven by JS */
+.vm-fader-cap {
+  position: absolute;
+  left: 50%;
+  width: 38px; height: 14px;
+  transform: translate(-50%, 50%);
+  border-radius: 2px;
+  background: linear-gradient(180deg,
+    #5a6848 0%, #3e4830 35%, #363e28 50%, #3e4830 65%, #5a6848 100%);
+  border: 1px solid #2a3418;
+  box-shadow: 0 2px 5px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.12);
+  pointer-events: none;
+  z-index: 3;
+  /* Grip lines */
+  background-image:
+    linear-gradient(180deg, #5a6848 0%, #3e4830 35%, #363e28 50%, #3e4830 65%, #5a6848 100%),
+    repeating-linear-gradient(90deg, transparent, transparent 4px, rgba(255,255,255,.06) 4px, rgba(255,255,255,.06) 5px);
+}
+
+/* ── Value readout ── */
+.vm-strip-val {
+  flex-shrink: 0;
+  margin: 5px 0 3px;
+  text-align: center;
+  width: 100%;
+}
+.vm-val-num {
+  font: 700 9px Manrope, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--strip-color, #88bb55);
+  text-shadow: 0 0 6px var(--strip-color, #88bb55);
+  letter-spacing: .02em;
+}
+
+/* ── Bottom icon row ── */
+.vm-strip-bottom {
+  flex-shrink: 0;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 0 0;
+}
+.vm-btn-icon {
+  font-size: 11px;
+  color: #4a6030;
+  cursor: pointer;
+  transition: color .12s;
+  user-select: none;
+}
+.vm-btn-icon:hover { color: #88bb55; }
 /* ── Right-click context menu ───────────────────────────────── */
 .clip-menu {
   position: fixed;
@@ -505,6 +950,83 @@ h2.sec { font-size: 30px; margin: 80px 0 0; }
 /* Download progress bar */
 .pbar { height: 12px; background: #2e333d; margin-top: 16px; }
 .pbar div { height: 100%; width: 0; background: var(--amb); }
+
+/* ── Loading animation — shown while fetching video info ───── */
+/* A skeleton shimmer placeholder (matching the preview layout)
+   plus a dual-ring spinner, so pasting a URL feels responsive.  */
+
+.loader { display: none; margin-top: 16px; }
+.loader.show { display: block; }
+
+/* Skeleton preview row — mirrors the real .pv layout */
+.skel-pv { display: flex; gap: 16px; align-items: center; }
+.skel-thumb {
+  width: 160px;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.skel-lines { flex: 1; min-width: 0; }
+.skel-line  { height: 15px; border-radius: 7px; margin-bottom: 12px; }
+.skel-line.tall { height: 20px; }
+.skel-line.w70  { width: 70%; }
+.skel-line.w45  { width: 45%; }
+.skel-btns  { display: flex; gap: 10px; margin-top: 16px; }
+.skel-btn   { height: 36px; border-radius: 9px; }
+
+/* Shimmer sweep — a moving highlight across the placeholder blocks */
+.skel-thumb, .skel-line, .skel-btn {
+  background-image: linear-gradient(100deg, var(--p2) 30%, #363b46 50%, var(--p2) 70%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Spinner row below the skeleton */
+.loader-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 28px 0 6px;
+}
+.loader-row p { margin: 0; color: var(--mu); font-size: 14px; }
+
+/* Dual-ring spinner — outer amber ring + inner teal ring,
+   rotating in opposite directions for a smooth, premium feel */
+.spinner {
+  width: 44px;
+  height: 44px;
+  position: relative;
+  flex-shrink: 0;
+}
+.spinner::before,
+.spinner::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid transparent;
+}
+.spinner::before {
+  border-top-color: var(--amb);
+  border-right-color: rgba(255, 176, 32, 0.3);
+  animation: spin 0.85s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+.spinner::after {
+  inset: 9px;
+  border-bottom-color: var(--tl);
+  border-left-color: rgba(94, 234, 212, 0.25);
+  animation: spin 1.1s cubic-bezier(0.5, 0, 0.5, 1) infinite reverse;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 480px) {
+  .skel-thumb { width: 120px; }
+}
 
 /* Numbered steps (how.html) */
 .steps {

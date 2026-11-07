@@ -35,20 +35,21 @@ const AudioCtx = window.AudioContext || window.webkitAudioContext;
 const sharedAC = new AudioCtx();
 
 // ── Timeline constants ─────────────────────────────────────────────────────
-const LANE_H  = 70;   // height of each clip lane in canvas pixels
+const LANE_H  = 42;   // height of each clip lane — matches .sidebar-track
 const RULER_H = 28;   // height of the ruler row at the top
 const BLOCK   = 256;  // samples per peak bucket
 const DPR     = window.devicePixelRatio || 1;
 
-// Zoom levels: pixels-per-second at each step
-const ZOOM_LEVELS = [6, 9, 12, 18, 26, 36, 52, 78, 110, 160, 220, 300];
+// Zoom levels: pixels-per-second at each step.
+// 21 evenly-spaced steps so + / - each move exactly one level (≈15–20 % per step).
+const ZOOM_LEVELS = [4, 6, 8, 11, 15, 20, 26, 34, 45, 58, 75, 96, 124, 160, 206, 265, 340, 440, 565, 725, 930];
 
 // ── Mutable state ──────────────────────────────────────────────────────────
 let clips    = [];       // all clips on the timeline
 let bufs     = {};       // decoded AudioBuffer objects, keyed by src id
 let peaks    = {};       // peak Float32Arrays, keyed by src id
 let sel      = null;     // id of the currently selected clip (or null)
-let zoomIdx  = 4;        // index into ZOOM_LEVELS
+let zoomIdx  = 6;        // index into ZOOM_LEVELS (default ≈ 26 pps)
 let pps      = ZOOM_LEVELS[zoomIdx]; // pixels per second (derived from zoomIdx)
 let playhead = 0;        // playhead position in seconds
 let playback = null;     // { c: AudioContext } when playing, null when stopped
@@ -89,10 +90,47 @@ function toast(message) {
   toast._timer = setTimeout(() => { el.style.display = 'none'; }, 2600);
 }
 
-/** Format seconds as MM:SS.s  e.g. 75.3 → "01:15.3" */
+// ── Time unit ──────────────────────────────────────────────────────────────
+// The user can switch the ruler / counter display unit via the unit-btn.
+// Each entry: [ symbol, multiplier to convert seconds → that unit ]
+const TIME_UNITS = [
+  { sym: 's',   mul: 1e0   },   // seconds
+  { sym: 'ms',  mul: 1e3   },   // milliseconds
+  { sym: 'μs',  mul: 1e6   },   // microseconds
+  { sym: 'ns',  mul: 1e9   },   // nanoseconds
+  { sym: 'ps',  mul: 1e12  },   // picoseconds
+  { sym: 'fs',  mul: 1e15  },   // femtoseconds
+  { sym: 'as',  mul: 1e18  },   // attoseconds
+  { sym: 'zs',  mul: 1e21  },   // zeptoseconds
+  { sym: 'ys',  mul: 1e24  },   // yoctoseconds
+  { sym: 'rs',  mul: 1e27  },   // rontoseconds
+  { sym: 'qs',  mul: 1e30  },   // quectoseconds
+];
+let timeUnitIdx = 0; // index into TIME_UNITS, default = seconds
+
+/**
+ * Format seconds into the currently selected time unit.
+ * Seconds use the classic MM:SS.s display; sub-second units use
+ * a numeric value + suffix scaled to the current unit.
+ */
 function fmtTime(secs) {
-  const m = Math.floor(secs / 60);
-  return String(m).padStart(2, '0') + ':' + (secs - m * 60).toFixed(1).padStart(4, '0');
+  const u = TIME_UNITS[timeUnitIdx];
+
+  if (u.mul === 1) {
+    // Seconds — classic MM:SS.s
+    const m = Math.floor(secs / 60);
+    return String(m).padStart(2, '0') + ':' + (secs - m * 60).toFixed(1).padStart(4, '0');
+  }
+
+  // Sub-second units
+  const val = secs * u.mul;
+  if (val === 0) return '0 ' + u.sym;
+  if (val >= 1e6)  return val.toExponential(2) + ' ' + u.sym;
+  if (val >= 1000) return Math.round(val) + ' ' + u.sym;
+  if (val >= 100)  return val.toFixed(1) + ' ' + u.sym;
+  if (val >= 10)   return val.toFixed(2) + ' ' + u.sym;
+  if (val >= 1)    return val.toFixed(3) + ' ' + u.sym;
+  return val.toPrecision(3) + ' ' + u.sym;
 }
 
 /** Number of lanes needed (at least 4, or one more than the furthest occupied lane). */
@@ -102,7 +140,23 @@ const laneCount = () => Math.max(4, Math.max(-1, ...clips.map(c => c.lane)) + 2)
 const totalDuration = () => Math.max(0, ...clips.map(c => c.start + c.dur));
 
 /** Snap a time value to the current grid step. */
-const gridStep = () => [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10].find(v => v * pps >= 10) || 10;
+// Steps cover the full range from quectoseconds to minutes.
+// Each step is chosen so the grid line spacing stays ≥ 10 px.
+const GRID_STEPS = [
+  1e-27, 2e-27, 5e-27,          // rontosecond scale
+  1e-24, 2e-24, 5e-24,          // yoctosecond
+  1e-21, 2e-21, 5e-21,          // zeptosecond
+  1e-18, 2e-18, 5e-18,          // attosecond
+  1e-15, 2e-15, 5e-15,          // femtosecond
+  1e-12, 2e-12, 5e-12,          // picosecond
+  1e-9,  2e-9,  5e-9,           // nanosecond
+  1e-6,  2e-6,  5e-6,           // microsecond
+  1e-3,  2e-3,  5e-3,           // millisecond
+  0.01, 0.02, 0.05,             // centisecond
+  0.1,  0.2,  0.5,              // tenth-second
+  1, 2, 5, 10, 30, 60,          // seconds / minutes
+];
+const gridStep = () => GRID_STEPS.find(v => v * pps >= 10) || 60;
 const snapTime = (t) => Math.max(0, Math.round(t / gridStep()) * gridStep());
 
 /** Find a clip by id. */
@@ -143,7 +197,9 @@ function Bars(el, n, min, max, val, hot, cb) {
     segments.forEach((seg, i) => {
       const isOn  = i < filled;
       const isHot = hot != null && (min + (i + 1) * (max - min) / n) > hot;
-      seg.className = (isOn ? 'on ' : '') + (isHot ? 'hot' : '');
+      const isLead = isOn && i === filled - 1;   // brightest "peak" segment
+      seg.className = [isOn && 'on', isHot && 'hot', isLead && 'lead']
+        .filter(Boolean).join(' ');
     });
   };
 
@@ -682,152 +738,251 @@ function layoutCanvas() {
   $('#sp').style.width = Math.max(w, (totalDuration() + 14) * pps) + 'px';
 }
 
-/** Redraw the entire timeline canvas. */
+/** Redraw the entire timeline canvas — FL Studio Playlist style. */
 function draw() {
   const w      = canvas.clientWidth;
   const h      = canvas.clientHeight;
   const scroll = wrapEl.scrollLeft;
+  const lc     = laneCount();
 
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
   // ── Background ──────────────────────────────────────────────
-  ctx.fillStyle = '#14161a';
+  ctx.fillStyle = '#1a2333';
   ctx.fillRect(0, 0, w, h);
 
-  // Alternating lane stripes
-  for (let lane = 0; lane < laneCount(); lane++) {
-    ctx.fillStyle = lane % 2 ? '#171a1f' : '#1a1d23';
+  // Alternating lane stripes — teal tones like FL Studio
+  for (let lane = 0; lane < lc; lane++) {
+    ctx.fillStyle = lane % 2 === 0 ? '#1c2637' : '#192232';
     ctx.fillRect(0, RULER_H + lane * LANE_H, w, LANE_H);
   }
 
-  // ── Ruler grid lines and time labels ────────────────────────
+  // Ruler background
+  ctx.fillStyle = '#161f2c';
+  ctx.fillRect(0, 0, w, RULER_H);
+
+  // ── Ruler grid lines ────────────────────────────────────────
   const step    = gridStep();
-  const majFreq = Math.ceil(72 / (step * pps)); // major line every ~72 px
+  const majFreq = Math.ceil(72 / (step * pps));
   let lastLabelX = -999;
 
-  ctx.font          = '11px Manrope,sans-serif';
-  ctx.textBaseline  = 'top';
+  ctx.font         = '10px Manrope,sans-serif';
+  ctx.textBaseline = 'middle';
 
   const firstTick = Math.floor(scroll / pps / step);
   const lastTick  = Math.ceil((scroll + w) / pps / step);
 
   for (let i = firstTick; i <= lastTick; i++) {
     const rawPx  = i * step * pps - scroll;
-    // Crisp lines: offset by 0.5px only when zoom is high enough to matter
-    const px     = pps >= 16 ? Math.floor(rawPx) + 0.5 : Math.floor(rawPx);
+    const px     = Math.floor(rawPx) + 0.5;
     const isMajor = i % majFreq === 0;
 
-    ctx.strokeStyle = isMajor ? 'rgba(55,62,76,0.28)' : 'rgba(30,35,44,0.18)';
-    ctx.lineWidth   = 1;
+    // Vertical grid lines — subtle, full height
+    ctx.strokeStyle = isMajor
+      ? 'rgba(60,80,100,0.35)'
+      : 'rgba(40,55,70,0.22)';
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(px, isMajor ? 8 : RULER_H - 4);
+    ctx.moveTo(px, RULER_H);
     ctx.lineTo(px, h);
     ctx.stroke();
 
-    // Only draw a label when there's at least 52 px since the last one
-    if (isMajor && px - lastLabelX > 52) {
-      ctx.fillStyle = '#5a6270';
-      ctx.fillText(fmtTime(i * step), px + 3, 7);
-      lastLabelX = px;
+    // Ruler tick + label
+    if (isMajor) {
+      ctx.strokeStyle = 'rgba(70,90,110,0.6)';
+      ctx.beginPath();
+      ctx.moveTo(px, RULER_H - 8);
+      ctx.lineTo(px, RULER_H);
+      ctx.stroke();
+
+      if (px - lastLabelX > 48) {
+        ctx.fillStyle = '#4a6070';
+        ctx.fillText(fmtTime(i * step), px + 3, RULER_H / 2);
+        lastLabelX = px;
+      }
+    } else {
+      ctx.strokeStyle = 'rgba(50,65,80,0.4)';
+      ctx.beginPath();
+      ctx.moveTo(px, RULER_H - 4);
+      ctx.lineTo(px, RULER_H);
+      ctx.stroke();
     }
+  }
+
+  // Horizontal lane dividers
+  ctx.strokeStyle = 'rgba(15,22,34,0.7)';
+  ctx.lineWidth   = 1;
+  for (let lane = 0; lane <= lc; lane++) {
+    const y = RULER_H + lane * LANE_H + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
   }
 
   // ── Clips ────────────────────────────────────────────────────
   clips.forEach((clip, index) => {
-    const color    = clipColor(index);
-    const clipX    = clip.start * pps - scroll;
-    const clipW    = clip.dur   * pps;
+    const color = clipColor(index);
+    const clipX = clip.start * pps - scroll;
+    const clipW = clip.dur   * pps;
 
-    // Skip clips that are entirely off-screen
     if (clipX > w || clipX + clipW < 0) return;
 
-    const y0   = RULER_H + clip.lane * LANE_H + 4;
-    const clipH = LANE_H - 8;
-    const pk   = peaks[clip.src];
+    const y0    = RULER_H + clip.lane * LANE_H + 1;
+    const clipH = LANE_H - 2;
+    const pk    = peaks[clip.src];
     const bucketSecs = BLOCK / bufs[clip.src].sampleRate;
 
     ctx.save();
     ctx.beginPath();
     ctx.rect(clipX, y0, clipW, clipH);
-    ctx.clip(); // clip drawing to this clip's bounding box
+    ctx.clip();
 
-    // Tinted fill
+    // Clip body fill — slightly transparent tinted colour
     ctx.fillStyle   = color;
-    ctx.globalAlpha = 0.22;
+    ctx.globalAlpha = 0.18;
     ctx.fillRect(clipX, y0, clipW, clipH);
     ctx.globalAlpha = 1;
 
-    // Waveform bars: 2 px wide, 1 px gap
-    ctx.fillStyle  = color;
+    // Top coloured bar (FL Studio style header strip)
+    ctx.fillStyle   = color;
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(clipX, y0, clipW, 3);
+    ctx.globalAlpha = 1;
+
+    // Waveform bars
+    ctx.fillStyle = color;
     const mid      = y0 + clipH / 2;
-    const barWidth = 2;
-    const barStep  = 3; // bar + gap
+    const barStep  = 2;
 
     const firstBar = Math.max(0, Math.floor(-clipX / barStep));
     const lastBar  = Math.min(clipW / barStep, (w - clipX) / barStep + 1);
 
     for (let i = firstBar; i < lastBar; i++) {
       const tStart = clip.off + i * barStep / pps;
-      const tEnd   = tStart   + barStep / pps;
+      const tEnd   = tStart + barStep / pps;
       let peakVal  = 0;
-
       for (
         let b = Math.floor(tStart / bucketSecs);
         b <= Math.min(pk.length - 1, Math.floor(tEnd / bucketSecs));
         b++
-      ) {
-        if (pk[b] > peakVal) peakVal = pk[b];
-      }
-
-      const barH = Math.max(1, peakVal * (clipH * 0.38));
-      ctx.fillRect(clipX + i * barStep, mid - barH / 2, barWidth, barH);
+      ) { if (pk[b] > peakVal) peakVal = pk[b]; }
+      const barH = Math.max(1, peakVal * (clipH * 0.4));
+      ctx.fillRect(clipX + i * barStep, mid - barH / 2, 1, barH);
     }
 
-    // Clip label
-    ctx.fillStyle = '#eafffb';
-    ctx.font      = '11px Manrope,sans-serif';
+    // Clip name
+    ctx.fillStyle = 'rgba(200,220,240,0.85)';
+    ctx.font      = '10px Manrope,sans-serif';
+    ctx.textBaseline = 'top';
     ctx.fillText(
-      `Clip ${index + 1} - ${clip.voice ? '[voice] ' : ''}${clip.name}`,
-      Math.max(clipX, 0) + 6,
-      y0 + 3
+      (clip.voice ? '♦ ' : '') + clip.name,
+      Math.max(clipX, 0) + 4,
+      y0 + 4
     );
 
     ctx.restore();
 
-    // Selection outline + drag handles
+    // ── Green start-dot marker (FL Studio style) ──────────────
+    const dotX = Math.max(clipX, 0);
+    ctx.fillStyle = '#52d458';
+    ctx.shadowColor = 'rgba(82,212,88,0.8)';
+    ctx.shadowBlur  = 4;
+    ctx.fillRect(dotX, y0 + clipH - 5, 5, 5);
+    ctx.shadowBlur = 0;
+
+    // Selection outline
     if (clip.id === sel) {
       ctx.strokeStyle = color;
-      ctx.lineWidth   = 2;
-      ctx.strokeRect(clipX + 1, y0 + 1, clipW - 2, clipH - 2);
+      ctx.lineWidth   = 1.5;
+      ctx.strokeRect(clipX + 0.75, y0 + 0.75, clipW - 1.5, clipH - 1.5);
       ctx.lineWidth = 1;
-
-      // Left and right resize handles
+      // Resize handles
       ctx.fillStyle = color;
-      ctx.fillRect(clipX,          y0 + clipH / 2 - 10, 5, 20);
-      ctx.fillRect(clipX + clipW - 5, y0 + clipH / 2 - 10, 5, 20);
+      ctx.fillRect(clipX,               y0 + clipH / 2 - 8, 4, 16);
+      ctx.fillRect(clipX + clipW - 4,   y0 + clipH / 2 - 8, 4, 16);
     }
   });
 
   // Empty state hint
   if (!clips.length) {
-    ctx.fillStyle  = '#8f97a6';
-    ctx.font       = '16px Manrope,sans-serif';
-    ctx.textAlign  = 'center';
-    ctx.fillText('Drop audio files here, or press Add audio', w / 2, RULER_H + LANE_H * 1.4);
-    ctx.textAlign  = 'left';
+    ctx.fillStyle    = 'rgba(80,100,120,0.5)';
+    ctx.font         = '14px Manrope,sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Drop audio files here, or press Add audio', w / 2, RULER_H + LANE_H * 1.5);
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'top';
   }
 
   // ── Playhead ─────────────────────────────────────────────────
-  const phX = playhead * pps - scroll;
-  ctx.fillStyle = '#ffb020';
-  ctx.fillRect(phX - 1, 0, 2, h);
+  const phX = Math.floor(playhead * pps - scroll) + 0.5;
+  ctx.strokeStyle = '#ffb020';
+  ctx.lineWidth   = 1.5;
+  ctx.shadowColor = 'rgba(255,176,32,0.5)';
+  ctx.shadowBlur  = 4;
+  ctx.beginPath();
+  ctx.moveTo(phX, 0);
+  ctx.lineTo(phX, h);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
 
-  // Playhead triangle at the top
+  // Playhead triangle
+  ctx.fillStyle = '#ffb020';
   ctx.beginPath();
   ctx.moveTo(phX - 6, 0);
   ctx.lineTo(phX + 6, 0);
   ctx.lineTo(phX, 9);
   ctx.fill();
+
+  // ── Sync sidebar ─────────────────────────────────────────────
+  syncSidebar();
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// SIDEBAR — track name column synced to canvas lanes
+// ──────────────────────────────────────────────────────────────────────────
+
+const sidebarEl = document.getElementById('sidebar');
+let   lastLaneCount = -1;
+
+function syncSidebar() {
+  const lc = laneCount();
+  if (lc === lastLaneCount) return;   // nothing changed
+  lastLaneCount = lc;
+
+  // Rebuild sidebar rows — keep the header
+  const header = sidebarEl.querySelector('.studio-sidebar-header');
+  sidebarEl.replaceChildren(header);
+
+  for (let lane = 0; lane < lc; lane++) {
+    // Find the clip occupying this lane (first one found)
+    const clip = clips.find(c => c.lane === lane);
+
+    const row = document.createElement('div');
+    row.className = 'sidebar-track' + (clip && clip.id === sel ? ' selected' : '');
+
+    const led = document.createElement('span');
+    led.className = clip ? 'sidebar-led' : 'sidebar-led off';
+
+    const name = document.createElement('span');
+    name.className = 'sidebar-name';
+    name.textContent = clip ? clip.name : 'Track ' + (lane + 1);
+
+    row.append(led, name);
+    sidebarEl.appendChild(row);
+
+    // Click a sidebar row to select the clip on that lane
+    row.addEventListener('click', () => {
+      if (clip) {
+        sel = clip.id;
+        refresh();
+      }
+    });
+  }
+
+  // Sync scroll position of sidebar with canvas vertical (lanes are fixed height)
+  sidebarEl.scrollTop = 0; // canvas lanes don't scroll vertically, so keep at top
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -841,6 +996,7 @@ function draw() {
  * any clip changes.
  */
 function refresh() {
+  lastLaneCount = -1;   // force sidebar rebuild
   layoutCanvas();
 
   const clip = getClip(sel);
@@ -1146,22 +1302,26 @@ $('#stop').onclick = () => {
   refresh();
 };
 
+// ── Time unit selector ─────────────────────────────────────────────────────
+// Cycles through s → ms → μs → ns → ps → fs → as → zs → ys → rs → qs → s
+const unitBtn = $('#unit-btn');
+unitBtn.addEventListener('click', () => {
+  timeUnitIdx = (timeUnitIdx + 1) % TIME_UNITS.length;
+  unitBtn.textContent = TIME_UNITS[timeUnitIdx].sym;
+  unitBtn.title = 'Current unit: ' + TIME_UNITS[timeUnitIdx].sym + ' — click to change';
+  refresh(); // redraws ruler + updates counter
+});
+
 // Export
 $('#xw').onclick = () => exportMix('wav');
 $('#xm').onclick = () => exportMix('mp3');
 
 // Zoom buttons
 $('#zi').onclick = () => {
-  // Step up to the next level whose pps is at least double the current
-  let next = zoomIdx;
-  ZOOM_LEVELS.forEach((v, i) => { if (v <= pps * 2) next = i; });
-  setZoom(Math.min(ZOOM_LEVELS.length - 1, next + 1), wrapEl.clientWidth / 2);
+  setZoom(Math.min(ZOOM_LEVELS.length - 1, zoomIdx + 1), wrapEl.clientWidth / 2);
 };
 $('#zo').onclick = () => {
-  // Step down to the first level whose pps is at most half the current
-  let next = 0;
-  ZOOM_LEVELS.forEach((v, i) => { if (v >= pps / 2 && next === 0) next = i; });
-  setZoom(Math.max(0, next - 1), wrapEl.clientWidth / 2);
+  setZoom(Math.max(0, zoomIdx - 1), wrapEl.clientWidth / 2);
 };
 $('#fit').onclick = () => {
   // Zoom to fit the entire mix in the current viewport
@@ -1181,44 +1341,165 @@ $('#fit').onclick = () => {
 const volumeDialog = $('#volume-dialog');
 const volumeList   = $('#volume-list');
 const masterSlider = $('#master-volume');
+const masterFill   = $('#master-fill');
+
+// ── Helpers ───────────────────────────────────────────────────────────────
 
 /**
- * Rebuild the volume panel to reflect current clip list.
- * Called each time the dialog is opened.
+ * Set --fval as a HEIGHT percentage on a vertical fader fill element.
+ * 0 → 0%, 100 (unity) → 50%, 200 (max) → 100%.
+ */
+function setFaderFill(fillEl, slider) {
+  const pct = (Number(slider.value) / Number(slider.max)) * 100;
+  fillEl.style.setProperty('--fval', pct + '%');
+}
+
+/**
+ * Position the fader cap div so it sits at the correct position
+ * on the visible rail. The cap's bottom edge tracks the fill top.
+ * capEl   — the .vm-fader-cap div
+ * slider  — the range input (value 0–200)
+ */
+function setFaderCap(capEl, slider) {
+  const pct = 1 - (Number(slider.value) / Number(slider.max)); // 0 = top, 1 = bottom
+  // The slot's total height minus the cap height (14px) gives travel range.
+  // We use a CSS calc so it works at any panel size.
+  capEl.style.bottom = `calc(${(1 - pct) * 100}% - 7px)`;
+}
+
+/**
+ * Set the knob dot angle (−135° → +135° arc across the full range).
+ */
+function setKnobAngle(knobEl, value, min, max) {
+  const angle = -135 + ((value - min) / (max - min)) * 270;
+  const rad   = (angle * Math.PI) / 180;
+  const r     = 9; // px from knob centre
+  const cx = 14, cy = 14;
+  const dx = cx + r * Math.sin(rad);
+  const dy = cy - r * Math.cos(rad);
+  const dot = knobEl.querySelector('.vm-knob-dot');
+  if (!dot) return;
+  dot.style.left      = dx + 'px';
+  dot.style.top       = dy + 'px';
+  dot.style.bottom    = 'auto';
+  dot.style.transform = 'translate(-50%,-50%)';
+}
+
+/**
+ * Re-sync all fader caps after the panel is resized.
+ */
+function syncFaderSizes() {
+  document.querySelectorAll('.vm-fader-slot').forEach(slot => {
+    const slider = slot.querySelector('.vm-fader-input');
+    const cap    = slot.querySelector('.vm-fader-cap');
+    const fill   = slot.querySelector('.vm-fader-fill-v');
+    if (slider && cap)  setFaderCap(cap, slider);
+    if (slider && fill) setFaderFill(fill, slider);
+  });
+}
+
+/**
+ * Rebuild the vertical mixer channel strips.
+ * Called each time the panel opens.
  */
 function renderVolumePanel() {
-  volumeList.replaceChildren();
+  const list = $('#volume-list');
+  list.replaceChildren();
 
   clips.forEach((clip, index) => {
-    const row = document.createElement('div');
-    row.className = 'volume-row clip-volume-row';
-    row.style.setProperty('--clip-color', clipColor(index));
+    const color = clipColor(index);
 
-    // Header: clip number, name, current value
-    const head     = document.createElement('div');
-    head.className = 'volume-row-head';
+    /* ── Strip shell ── */
+    const strip = document.createElement('div');
+    strip.className = 'vm-strip' + (clip.id === sel ? ' vm-strip-selected' : '');
+    strip.style.setProperty('--strip-color', color);
 
-    const identity  = document.createElement('div');
-    identity.className = 'volume-identity';
-    const numEl   = document.createElement('strong');
-    numEl.textContent = 'Clip ' + (index + 1);
-    const nameEl  = document.createElement('small');
-    nameEl.textContent = clip.name;
-    const valueEl = document.createElement('output');
-    valueEl.textContent = clip.vol + '%';
+    /* ── Rotated name ── */
+    const nameWrap = document.createElement('div');
+    nameWrap.className = 'vm-strip-name-wrap';
+    const nameEl = document.createElement('span');
+    nameEl.className = 'vm-strip-name';
+    nameEl.textContent = clip.name || ('Insert ' + (index + 1));
+    nameEl.title = clip.name;
+    nameWrap.appendChild(nameEl);
 
-    identity.append(numEl, nameEl);
-    head.append(identity, valueEl);
+    /* ── LED ── */
+    const ledRow = document.createElement('div');
+    ledRow.className = 'vm-strip-led-row';
+    const led = document.createElement('span');
+    led.className = 'vm-led ' + (clip.vol > 140 ? 'vm-led-hot' : 'vm-led-green');
+    ledRow.appendChild(led);
 
-    // Range slider
+    /* ── Knob ── */
+    const knobWrap = document.createElement('div');
+    knobWrap.className = 'vm-strip-knob-wrap';
+    const knob = document.createElement('div');
+    knob.className = 'vm-knob';
+    knob.title = clip.name;
+    const knobDot = document.createElement('div');
+    knobDot.className = 'vm-knob-dot';
+    knob.appendChild(knobDot);
+    knobWrap.appendChild(knob);
+
+    /* ── Fader slot ── */
+    const faderArea = document.createElement('div');
+    faderArea.className = 'vm-strip-fader-area';
+
+    const faderSlot = document.createElement('div');
+    faderSlot.className = 'vm-fader-slot';
+
+    const rail = document.createElement('div');
+    rail.className = 'vm-fader-rail';
+
+    const fill = document.createElement('div');
+    fill.className = 'vm-fader-fill-v';
+
+    const cap = document.createElement('div');
+    cap.className = 'vm-fader-cap';
+
     const slider = document.createElement('input');
-    slider.type  = 'range';
-    slider.min   = '0';
-    slider.max   = '200';
-    slider.step  = '1';
-    slider.value = String(clip.vol);
-    slider.setAttribute('aria-label', `Clip ${index + 1} volume`);
+    slider.type      = 'range';
+    slider.className = 'vm-fader-input';
+    slider.min       = '0';
+    slider.max       = '200';
+    slider.step      = '1';
+    slider.value     = String(clip.vol);
+    slider.setAttribute('aria-label', `${clip.name || 'Clip ' + (index+1)} volume`);
+    slider.setAttribute('orient', 'vertical');
+    // Cross-browser vertical: writing-mode for Firefox, appearance for old Safari
+    slider.style.cssText = 'writing-mode:vertical-lr;direction:rtl;-webkit-appearance:slider-vertical;appearance:auto;opacity:0;position:absolute;inset:0;width:100%;height:100%;cursor:ns-resize;z-index:4;margin:0;padding:0;';
 
+    faderSlot.append(rail, fill, cap, slider);
+    faderArea.appendChild(faderSlot);
+
+    /* ── Value readout ── */
+    const valDiv = document.createElement('div');
+    valDiv.className = 'vm-strip-val';
+    const valOut = document.createElement('output');
+    valOut.className = 'vm-val-num';
+    valOut.textContent = clip.vol + '%';
+    valDiv.appendChild(valOut);
+
+    /* ── Bottom icons ── */
+    const btmDiv = document.createElement('div');
+    btmDiv.className = 'vm-strip-bottom';
+    const pwrIcon = document.createElement('span');
+    pwrIcon.className = 'vm-btn-icon';
+    pwrIcon.title = clip.voice ? 'Voice track' : 'Music track';
+    pwrIcon.textContent = clip.voice ? '♦' : '⏻';
+    btmDiv.appendChild(pwrIcon);
+
+    strip.append(nameWrap, ledRow, knobWrap, faderArea, valDiv, btmDiv);
+    list.appendChild(strip);
+
+    /* Init visuals after append (slot has height now) */
+    requestAnimationFrame(() => {
+      setFaderFill(fill, slider);
+      setFaderCap(cap, slider);
+      setKnobAngle(knob, clip.vol, 0, 200);
+    });
+
+    /* ── Events ── */
     let before = null;
     const beginEdit = () => { if (before === null) before = snapshot(); };
 
@@ -1227,9 +1508,11 @@ function renderVolumePanel() {
     slider.addEventListener('input', () => {
       beginEdit();
       clip.vol = Number(slider.value);
-      valueEl.textContent = clip.vol + '%';
-
-      // Keep the inline bar in sync if this is the selected clip
+      valOut.textContent = clip.vol + '%';
+      setFaderFill(fill, slider);
+      setFaderCap(cap, slider);
+      setKnobAngle(knob, clip.vol, 0, 200);
+      led.className = 'vm-led ' + (clip.vol > 140 ? 'vm-led-hot' : 'vm-led-green');
       if (getClip(sel) === clip) {
         $('#cvl').textContent = 'Clip volume ' + clip.vol + '%';
         clipVolBar.set(clip.vol);
@@ -1239,23 +1522,155 @@ function renderVolumePanel() {
       if (before !== null) { commit(before); before = null; refresh(); }
     });
 
-    row.append(head, slider);
-    volumeList.appendChild(row);
+    /* Select strip on click */
+    strip.addEventListener('pointerdown', (e) => {
+      if (e.target === slider) return;
+      list.querySelectorAll('.vm-strip').forEach(s => s.classList.remove('vm-strip-selected'));
+      strip.classList.add('vm-strip-selected');
+      sel = clip.id;
+      refresh();
+    });
   });
 
-  // Sync master slider display
-  masterSlider.value           = String(mixSettings.master);
-  $('#master-value').textContent = mixSettings.master + '%';
+  /* ── Sync master strip ── */
+  const masterSliderEl = $('#master-volume');
+  const masterFillEl   = $('#master-fill');
+  const masterCapEl    = $('#vm-master-strip .vm-fader-cap');
+  if (masterSliderEl && masterFillEl) {
+    masterSliderEl.value = String(mixSettings.master);
+    setFaderFill(masterFillEl, masterSliderEl);
+    if (masterCapEl) setFaderCap(masterCapEl, masterSliderEl);
+    setKnobAngle($('#master-knob'), mixSettings.master, 0, 200);
+    $('#master-value').textContent = mixSettings.master + '%';
+    const masterLed = $('#master-led');
+    if (masterLed) masterLed.className = 'vm-led ' + (mixSettings.master > 140 ? 'vm-led-hot' : 'vm-led-green');
+  }
 }
 
 masterSlider.addEventListener('input', () => {
   mixSettings.master = Number(masterSlider.value);
   $('#master-value').textContent = mixSettings.master + '%';
+  setFaderFill(masterFill, masterSlider);
+  const masterCap = $('#vm-master-strip .vm-fader-cap');
+  if (masterCap) setFaderCap(masterCap, masterSlider);
+  setKnobAngle($('#master-knob'), mixSettings.master, 0, 200);
+  const led = $('#master-led');
+  if (led) led.className = 'vm-led ' + (mixSettings.master > 140 ? 'vm-led-hot' : 'vm-led-green');
 });
 masterSlider.addEventListener('change', () => { if (playback) startPlayback(); });
 
-$('#allvol').onclick   = () => { renderVolumePanel(); volumeDialog.showModal(); };
-$('#close-vol').onclick = () => volumeDialog.close();
+$('#allvol').onclick = () => {
+  renderVolumePanel();
+  volumeDialog.removeAttribute('hidden');
+  document.getElementById('volume-backdrop').removeAttribute('hidden');
+  // After DOM paint, initialise master visuals
+  requestAnimationFrame(() => {
+    setFaderFill(masterFill, masterSlider);
+    const masterCap = $('#vm-master-strip .vm-fader-cap');
+    if (masterCap) setFaderCap(masterCap, masterSlider);
+    setKnobAngle($('#master-knob'), mixSettings.master, 0, 200);
+    const led = $('#master-led');
+    if (led) led.className = 'vm-led ' + (mixSettings.master > 140 ? 'vm-led-hot' : 'vm-led-green');
+  });
+};
+
+function closeMixer() {
+  volumeDialog.setAttribute('hidden', '');
+  document.getElementById('volume-backdrop').setAttribute('hidden', '');
+}
+$('#close-vol').onclick = closeMixer;
+document.getElementById('volume-backdrop').addEventListener('click', closeMixer);
+
+// Close on Escape
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !volumeDialog.hasAttribute('hidden')) closeMixer();
+});
+
+// ── Drag (move) ────────────────────────────────────────────────────────────
+(function initDragMove() {
+  const handle = document.getElementById('vm-drag-handle');
+  let dragging = false, ox = 0, oy = 0;
+
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.target.id === 'close-vol') return;   // don't drag via close btn
+    dragging = true;
+    ox = e.clientX - volumeDialog.offsetLeft;
+    oy = e.clientY - volumeDialog.offsetTop;
+    handle.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const x = Math.max(0, Math.min(window.innerWidth  - volumeDialog.offsetWidth,  e.clientX - ox));
+    const y = Math.max(0, Math.min(window.innerHeight - volumeDialog.offsetHeight, e.clientY - oy));
+    volumeDialog.style.left = x + 'px';
+    volumeDialog.style.top  = y + 'px';
+  });
+
+  handle.addEventListener('pointerup',    () => { dragging = false; });
+  handle.addEventListener('pointercancel',() => { dragging = false; });
+})();
+
+// ── Resize ─────────────────────────────────────────────────────────────────
+(function initResize() {
+  const MIN_W = 300, MIN_H = 240;
+
+  volumeDialog.querySelectorAll('.vm-resize').forEach(handle => {
+    const dir = handle.dataset.dir;
+    let active = false;
+    let startX, startY, startL, startT, startW, startH;
+
+    handle.addEventListener('pointerdown', (e) => {
+      active = true;
+      startX = e.clientX; startY = e.clientY;
+      startL = volumeDialog.offsetLeft;
+      startT = volumeDialog.offsetTop;
+      startW = volumeDialog.offsetWidth;
+      startH = volumeDialog.offsetHeight;
+      handle.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    handle.addEventListener('pointermove', (e) => {
+      if (!active) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      let l = startL, t = startT, w = startW, h = startH;
+
+      // Width / X
+      if (dir.includes('e')) { w = Math.max(MIN_W, startW + dx); }
+      if (dir.includes('w')) { w = Math.max(MIN_W, startW - dx); l = startL + (startW - w); }
+
+      // Height / Y
+      if (dir.includes('s')) { h = Math.max(MIN_H, startH + dy); }
+      if (dir.includes('n')) { h = Math.max(MIN_H, startH - dy); t = startT + (startH - h); }
+
+      // Clamp to viewport
+      l = Math.max(0, Math.min(window.innerWidth  - w, l));
+      t = Math.max(0, Math.min(window.innerHeight - h, t));
+      w = Math.min(w, window.innerWidth);
+      h = Math.min(h, window.innerHeight);
+
+      volumeDialog.style.left   = l + 'px';
+      volumeDialog.style.top    = t + 'px';
+      volumeDialog.style.width  = w + 'px';
+      volumeDialog.style.height = h + 'px';
+
+      // Immediately re-measure faders so they stay correct while resizing
+      syncFaderSizes();
+    });
+
+    handle.addEventListener('pointerup',     () => { active = false; syncFaderSizes(); });
+    handle.addEventListener('pointercancel', () => { active = false; });
+  });
+
+  // Also re-sync faders when the window itself is resized
+  window.addEventListener('resize', () => {
+    if (!volumeDialog.hasAttribute('hidden')) syncFaderSizes();
+  });
+})();
 
 // ──────────────────────────────────────────────────────────────────────────
 // KEYBOARD SHORTCUTS

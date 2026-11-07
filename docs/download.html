@@ -77,6 +77,25 @@
       Paste or type a full URL to fetch the video.
     </div>
 
+    <!-- Loading animation — skeleton shimmer + spinner, shown while fetching video info -->
+    <div id="loader" class="loader">
+      <div class="skel-pv">
+        <div class="skel-thumb"></div>
+        <div class="skel-lines">
+          <div class="skel-line tall w70"></div>
+          <div class="skel-line w45"></div>
+          <div class="skel-btns">
+            <div class="skel-btn" style="width:100px"></div>
+            <div class="skel-btn" style="width:90px"></div>
+          </div>
+        </div>
+      </div>
+      <div class="loader-row">
+        <div class="spinner" role="status" aria-label="Loading"></div>
+        <p>Fetching video details…</p>
+      </div>
+    </div>
+
     <!-- Video preview — hidden until a valid URL is detected -->
     <div id="preview" style="display:none; margin-top:16px">
       <div class="pv">
@@ -129,6 +148,11 @@ const state = {
 const urlInput     = document.getElementById('url');
 const downloaderCard = document.getElementById('downloader-card');
 const offlineBanner  = document.getElementById('offline-banner');
+const loaderEl     = document.getElementById('loader');
+
+// Show / hide the skeleton + spinner loading animation
+function showLoader() { loaderEl.classList.add('show'); }
+function hideLoader() { loaderEl.classList.remove('show'); }
 
 // ── Server health check ────────────────────────────────────────────────────
 // Ping the backend with a clearly invalid URL on page load.
@@ -177,6 +201,7 @@ function setChip(el) {
   document.getElementById('preview').style.display = 'none';
   urlInput.value   = '';
   state.currentUrl = '';
+  hideLoader();
   showMsg('Paste or type a full URL to fetch the video.');
 }
 
@@ -195,6 +220,7 @@ function resetForm() {
   urlInput.value   = '';
   document.getElementById('preview').style.display = 'none';
   document.getElementById('pbar').style.width      = '0%';
+  hideLoader();
   showMsg('Paste or type a full URL to fetch the video.');
 }
 
@@ -217,6 +243,7 @@ async function inspectUrl(rawUrl) {
   state.currentUrl  = url;
 
   showMsg('Checking link…');
+  showLoader();
 
   try {
     const res  = await fetch('/api/info', {
@@ -231,6 +258,7 @@ async function inspectUrl(rawUrl) {
     // Discard if a newer request arrived or the URL changed while we waited
     if (requestId !== inspectRequest || url !== urlInput.value.trim()) return;
 
+    hideLoader();
     state.selected = data;
 
     document.getElementById('thumb').src         = data.thumb || '';
@@ -246,6 +274,7 @@ async function inspectUrl(rawUrl) {
     showMsg('Ready to download.');
   } catch (error) {
     if (requestId !== inspectRequest || error.name === 'AbortError') return;
+    hideLoader();
     state.currentUrl = '';
 
     // Distinguish a network failure from a normal API error
@@ -269,6 +298,7 @@ urlInput.addEventListener('input', () => {
   state.selected   = { title: '', thumb: '', duration: '', site: '', uploader: '' };
   document.getElementById('preview').style.display = 'none';
   document.getElementById('pbar').style.width      = '0%';
+  hideLoader();
 
   const url = urlInput.value.trim();
   if (!url) {

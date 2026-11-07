@@ -54,15 +54,27 @@
     <button class="amb" id="play">Play</button>
     <button id="stop">Stop</button>
     <span id="tc">00:00.0</span>
+    <!-- Time-unit selector: click to cycle through s / ms / μs / ns / … -->
+    <button id="unit-btn" title="Click to change time unit" style="font-size:11px;padding:5px 9px;min-width:38px">s</button>
   </div>
 
-  <!-- ── Timeline ────────────────────────────────────────────── -->
-  <!-- #wrap scrolls horizontally; #cv is the sticky canvas; #sp is
-       an invisible div that sets the scrollable width -->
-  <div id="wrap">
-    <canvas id="cv"></canvas>
-    <div id="sp"></div>
-  </div>
+  <!-- ── Timeline + sidebar ───────────────────────────────── -->
+  <div class="studio-body">
+
+    <!-- Left sidebar: track names, synced to canvas lanes -->
+    <div class="studio-sidebar" id="sidebar">
+      <div class="studio-sidebar-header">Tracks</div>
+      <!-- .sidebar-track rows injected by JS -->
+    </div>
+
+    <!-- ── Timeline ── -->
+    <!-- #wrap scrolls horizontally; #cv is the sticky canvas; #sp sets scroll width -->
+    <div id="wrap">
+      <canvas id="cv"></canvas>
+      <div id="sp"></div>
+    </div>
+
+  </div><!-- /.studio-body -->
 
   <!-- ── Options panels ──────────────────────────────────────── -->
   <div class="opts">
@@ -102,25 +114,72 @@
 
 </main><!-- /.studio -->
 
-<!-- ── All Volume dialog ────────────────────────────────────── -->
-<dialog id="volume-dialog" class="volume-dialog" aria-labelledby="volume-title">
-  <div class="volume-head">
-    <h2 id="volume-title">All volume</h2>
-    <button type="button" id="close-vol" aria-label="Close volume controls">×</button>
-  </div>
+<!-- ── All Volume — FL Studio Mixer (vertical strips) ─────────── -->
+<div id="volume-dialog" class="volume-dialog" role="dialog"
+     aria-labelledby="volume-title" aria-modal="true" hidden>
 
-  <!-- Master volume row (always first) -->
-  <div class="volume-row master-volume-row">
-    <div class="volume-row-head">
-      <strong>Master</strong>
-      <output id="master-value">100%</output>
+  <!-- 8 resize handles -->
+  <div class="vm-resize" data-dir="n"></div>
+  <div class="vm-resize" data-dir="ne"></div>
+  <div class="vm-resize" data-dir="e"></div>
+  <div class="vm-resize" data-dir="se"></div>
+  <div class="vm-resize" data-dir="s"></div>
+  <div class="vm-resize" data-dir="sw"></div>
+  <div class="vm-resize" data-dir="w"></div>
+  <div class="vm-resize" data-dir="nw"></div>
+
+  <!-- Title bar -->
+  <div class="vm-titlebar" id="vm-drag-handle">
+    <span class="vm-title" id="volume-title">Mixer — All Channels</span>
+    <div class="vm-winbtns">
+      <button class="vm-wbtn vm-wbtn-min"  type="button" aria-label="Minimise" tabindex="-1">−</button>
+      <button class="vm-wbtn vm-wbtn-max"  type="button" aria-label="Maximise" tabindex="-1">□</button>
+      <button class="vm-wbtn vm-wbtn-close" type="button" id="close-vol" aria-label="Close">×</button>
     </div>
-    <input id="master-volume" type="range" min="0" max="200" step="1" value="100" aria-label="Master volume">
   </div>
 
-  <!-- Per-clip rows are injected here by renderVolumePanel() in mix.js -->
-  <div id="volume-list"></div>
-</dialog>
+  <!-- Channel strips row -->
+  <div class="vm-strips-scroll">
+
+    <!-- Master strip — always present -->
+    <div class="vm-strip vm-strip-master" id="vm-master-strip">
+      <div class="vm-strip-name-wrap">
+        <span class="vm-strip-name">Master</span>
+      </div>
+      <div class="vm-strip-led-row">
+        <span class="vm-led vm-led-green" id="master-led"></span>
+      </div>
+      <div class="vm-strip-knob-wrap">
+        <div class="vm-knob" id="master-knob"><div class="vm-knob-dot"></div></div>
+      </div>
+      <div class="vm-strip-fader-area">
+        <div class="vm-fader-slot">
+          <div class="vm-fader-rail"></div>
+          <div class="vm-fader-fill-v" id="master-fill"></div>
+          <div class="vm-fader-cap"></div>
+          <input class="vm-fader-input" id="master-volume" type="range"
+                 min="0" max="200" step="1" value="100"
+                 aria-label="Master volume"
+                 style="writing-mode:vertical-lr;direction:rtl;-webkit-appearance:slider-vertical;appearance:auto;opacity:0;position:absolute;inset:0;width:100%;height:100%;cursor:ns-resize;z-index:4;margin:0;padding:0;">
+        </div>
+      </div>
+      <div class="vm-strip-val">
+        <output class="vm-val-num" id="master-value">100%</output>
+      </div>
+      <div class="vm-strip-bottom">
+        <span class="vm-btn-icon" title="Master power">⏻</span>
+      </div>
+    </div>
+
+    <!-- Per-clip strips injected by JS -->
+    <div id="volume-list" class="vm-clip-strips-row"></div>
+
+  </div><!-- /.vm-strips-scroll -->
+
+</div><!-- /.volume-dialog -->
+
+<!-- Backdrop -->
+<div id="volume-backdrop" class="vm-backdrop" hidden></div>
 
 <!-- ── Toast notification ───────────────────────────────────── -->
 <div id="toast"></div>
